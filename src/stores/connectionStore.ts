@@ -19,6 +19,37 @@ export function filterConnections(
   });
 }
 
+/** Group connections by their `group` field; ungrouped come last. */
+export function groupConnections(
+  connections: ConnectionConfig[],
+  groups: string[],
+  searchQuery: string,
+): { group: string; connections: ConnectionConfig[] }[] {
+  const q = searchQuery.trim().toLowerCase();
+  const filtered = connections.filter((c) => {
+    if (!q) return true;
+    const hay = `${c.name} ${c.host ?? ''} ${c.database ?? ''} ${c.databaseType}`.toLowerCase();
+    return hay.includes(q);
+  });
+
+  const map = new Map<string, ConnectionConfig[]>();
+  for (const g of groups) map.set(g, []);
+  for (const c of filtered) {
+    const key = c.group || '';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(c);
+  }
+  const result: { group: string; connections: ConnectionConfig[] }[] = [];
+  for (const g of groups) {
+    result.push({ group: g, connections: map.get(g) ?? [] });
+  }
+  const ungrouped = map.get('');
+  if (ungrouped && ungrouped.length > 0) {
+    result.push({ group: '', connections: ungrouped });
+  }
+  return result;
+}
+
 interface ConnectionStore {
   connections: ConnectionConfig[];
   groups: string[];
@@ -34,6 +65,9 @@ interface ConnectionStore {
   deleteConnection: (id: string) => Promise<void>;
   testConnection: (config: ConnectionConfig) => Promise<ServerInfo>;
   addGroup: (name: string) => Promise<void>;
+  renameGroup: (oldName: string, newName: string) => Promise<void>;
+  deleteGroup: (name: string) => Promise<void>;
+  moveConnectionToGroup: (connectionId: string, group: string | undefined) => Promise<void>;
   setSelectedGroup: (group: string | null) => void;
   setSearchQuery: (query: string) => void;
 }
@@ -123,6 +157,43 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     const updated = [...groups, trimmed];
     await connectionCommands.saveGroups(updated);
     set({ groups: updated });
+  },
+
+  renameGroup: async (oldName, newName) => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+    const { groups, connections } = get();
+    const updated = groups.map((g) => (g === oldName ? trimmed : g));
+    await connectionCommands.saveGroups(updated);
+    for (const c of connections) {
+      if (c.group === oldName) {
+        await connectionCommands.saveConnection({ ...c, group: trimmed });
+      }
+    }
+    await get().fetchConnections();
+    set({ groups: updated });
+  },
+
+  deleteGroup: async (name) => {
+    const { groups, connections } = get();
+    const updated = groups.filter((g) => g !== name);
+    await connectionCommands.saveGroups(updated);
+    for (const c of connections) {
+      if (c.group === name) {
+        await connectionCommands.saveConnection({ ...c, group: undefined });
+      }
+    }
+    await get().fetchConnections();
+    set({ groups: updated, selectedGroup: null });
+  },
+
+  moveConnectionToGroup: async (connectionId, group) => {
+    const { connections } = get();
+    const conn = connections.find((c) => c.id === connectionId);
+    if (!conn) return;
+    await connectionCommands.saveConnection({ ...conn, group });
+    await get().fetchConnections();
+    void emitCrossWindow(EVENT_CONNECTIONS_CHANGED);
   },
 
   setSelectedGroup: (group) => set({ selectedGroup: group }),

@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capability set for DataZen",
-  "windows": ["main", "new-connection-*", "connection-*", "query-*", "settings-singleton"],
+  "windows": ["main", "new-connection-*", "connection-*", "query-*", "data-sync-*", "settings-singleton"],
   "permissions": [
     "core:default",
     "core:window:allow-create",
@@ -19,6 +19,7 @@
     "core:window:allow-start-resize-dragging",
     "core:webview:allow-create-webview-window",
     "core:event:default",
+    "core:menu:default",
     "dialog:default"
   ]
 }

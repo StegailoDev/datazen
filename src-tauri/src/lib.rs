@@ -178,6 +178,15 @@ pub fn run() {
             commands::save_settings,
             commands::write_file,
             commands::read_file,
+            commands::backup_database,
+            commands::restore_database,
+            commands::compare_databases,
+            commands::sync_table,
+            commands::sync_tables,
+            commands::get_sync_tasks,
+            commands::save_sync_task_direct,
+            commands::delete_sync_task,
+            commands::check_sync_conflicts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

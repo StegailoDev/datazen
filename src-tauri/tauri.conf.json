@@ -14,10 +14,10 @@
       {
         "label": "main",
         "title": "DataZen",
-        "width": 1200,
-        "height": 800,
-        "minWidth": 800,
-        "minHeight": 600,
+        "width": 680,
+        "height": 480,
+        "minWidth": 520,
+        "minHeight": 400,
         "decorations": false,
         "backgroundColor": "#0f172a"
       }

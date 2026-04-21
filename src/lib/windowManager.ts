@@ -111,6 +111,21 @@ export function openQueryWindow(connectionId: string, database: string) {
   }
 }
 
+export function openDataSyncWindow() {
+  const opts: OpenWindowOptions = {
+    params: { window: 'data-sync' },
+    width: 1000,
+    height: 700,
+    title: '数据同步 - DataZen',
+  };
+
+  if (isTauri()) {
+    void openTauriWindow(nextLabel('data-sync'), opts);
+  } else {
+    openBrowserWindow(opts);
+  }
+}
+
 const SETTINGS_LABEL = 'settings-singleton';
 
 export function openSettingsWindow() {

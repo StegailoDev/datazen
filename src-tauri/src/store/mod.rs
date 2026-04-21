@@ -65,12 +65,41 @@ pub struct QueryHistoryEntry {
     pub error_message: Option<String>,
 }
 
+/// Persisted state for a data-sync task (checkpoint / resume).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncTask {
+    pub id: String,
+    pub source_connection_id: String,
+    pub target_connection_id: String,
+    pub source_config_id: String,
+    pub target_config_id: String,
+    /// All tables selected for sync.
+    pub tables: Vec<String>,
+    /// Tables that have been fully synced.
+    pub completed_tables: Vec<String>,
+    /// Table that was being synced when interrupted (if any).
+    pub current_table: Option<String>,
+    /// Row offset within the current table (rows already inserted).
+    pub current_table_offset: u64,
+    /// Source row count snapshot at task creation, keyed by table name.
+    pub source_row_counts: std::collections::HashMap<String, u64>,
+    /// "full" | "continue"
+    pub strategy: String,
+    /// "running" | "paused" | "completed" | "failed"
+    pub status: String,
+    pub error_message: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 #[derive(Default)]
 struct StoreCache {
     connections: Vec<ConnectionConfig>,
     groups: Vec<String>,
     settings: AppSettings,
     query_history: Vec<QueryHistoryEntry>,
+    sync_tasks: Vec<SyncTask>,
 }
 
 /// Encrypted JSON store rooted at the per-app data directory.
@@ -225,6 +254,10 @@ impl Store {
             .unwrap_or_default();
         cache.query_history = self
             .load_json_file::<Vec<QueryHistoryEntry>>("history/queries.json")
+            .await
+            .unwrap_or_default();
+        cache.sync_tasks = self
+            .load_json_file::<Vec<SyncTask>>("sync_tasks.json")
             .await
             .unwrap_or_default();
 
@@ -433,6 +466,41 @@ impl Store {
         };
 
         self.save_json_file("settings.json", &snapshot).await
+    }
+
+    // ── Sync tasks ──
+
+    pub async fn get_sync_tasks(&self) -> Vec<SyncTask> {
+        let cache = self.cache.read().await;
+        cache.sync_tasks.clone()
+    }
+
+    pub async fn save_sync_task(&self, task: SyncTask) -> Result<(), StoreError> {
+        {
+            let mut cache = self.cache.write().await;
+            if let Some(pos) = cache.sync_tasks.iter().position(|t| t.id == task.id) {
+                cache.sync_tasks[pos] = task;
+            } else {
+                cache.sync_tasks.push(task);
+            }
+        }
+        let snapshot = {
+            let cache = self.cache.read().await;
+            cache.sync_tasks.clone()
+        };
+        self.save_json_file("sync_tasks.json", &snapshot).await
+    }
+
+    pub async fn delete_sync_task(&self, id: &str) -> Result<(), StoreError> {
+        {
+            let mut cache = self.cache.write().await;
+            cache.sync_tasks.retain(|t| t.id != id);
+        }
+        let snapshot = {
+            let cache = self.cache.read().await;
+            cache.sync_tasks.clone()
+        };
+        self.save_json_file("sync_tasks.json", &snapshot).await
     }
 }
 

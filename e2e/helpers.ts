@@ -33,60 +33,39 @@ export async function closeExtraWindows(mainWindow: string) {
 // ── main window ─────────────────────────────────────────────────────
 
 /**
- * Click the "连接" button on a card with PostgreSQL badge (the seeded connection).
+ * Double-click a connection item in the new grouped list to open it.
+ * Searches for a connection containing `nameFragment` in its text.
  * If already connected (window open), returns true without clicking.
  */
-export async function clickCardConnectButton() {
-  // Check if already connected (connection window already open)
+export async function clickCardConnectButton(nameFragment = 'Pg') {
   const handles = await browser.getWindowHandles();
-  if (handles.length > 1) {
-    return true;
-  }
+  if (handles.length > 1) return true;
 
-  // Check if there's a "断开" button (already connected but window closed)
-  // Disconnect first and then reconnect
-  const allButtons = await $$('button');
-  for (const btn of allButtons) {
-    const text = (await btn.getText()).trim();
-    if (text === '断开') {
-      await btn.click();
-      await browser.pause(1000);
-      break;
-    }
-  }
-
-  const cards = await $$('.group.relative');
-  for (const card of cards) {
-    const cardText = await card.getText();
-    if (cardText.includes('PostgreSQL')) {
-      const btns = await card.$$('button');
-      for (const btn of btns) {
-        const text = (await btn.getText()).trim();
-        if (text === '连接') {
-          await btn.click();
-          return true;
-        }
+  // Use JS dblclick dispatch since WebDriver dblclick may not work in WebKit
+  const found = await browser.execute((frag: string) => {
+    const items = document.querySelectorAll('[data-conn-item]');
+    for (const item of items) {
+      const text = item.textContent || '';
+      if (text.includes(frag) || text.includes('Postgres') || text.includes('PostgreSQL') || text.includes('localhost')) {
+        item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+        return true;
       }
     }
-  }
-  // Fallback: click any "连接" button
-  const buttons = await $$('button');
-  for (const btn of buttons) {
-    const text = (await btn.getText()).trim();
-    if (text === '连接') {
-      await btn.click();
+    if (items.length > 0) {
+      items[0].dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
       return true;
     }
-  }
-  return false;
+    return false;
+  }, nameFragment);
+  return found;
 }
 
-/** Find a connection card by name in the main window. */
+/** Find a connection item by name in the main window. */
 export async function findCardByName(connName: string) {
-  const cards = await $$('.group.relative');
-  for (const card of cards) {
-    const text = await card.getText();
-    if (text.includes(connName)) return card;
+  const items = await $$('[data-conn-item]');
+  for (const item of items) {
+    const text = await item.getText();
+    if (text.includes(connName)) return item;
   }
   return null;
 }
@@ -99,7 +78,11 @@ export async function findCardByName(connName: string) {
  */
 export async function openConnectionWindow() {
   const mainWindow = await browser.getWindowHandle();
-  await $('button*=新建连接').waitForDisplayed({ timeout: 10000 });
+  // Wait for the main window to render connection items
+  await browser.waitUntil(
+    async () => (await $$('[data-conn-item]')).length > 0,
+    { timeout: 15000, timeoutMsg: '等待连接项加载超时' },
+  );
   await browser.pause(1500);
 
   await clickCardConnectButton();
@@ -142,26 +125,18 @@ export async function createAndConnectMySQL(opts: {
 
   const mainWindow = await browser.getWindowHandle();
 
-  // Check if the MySQL connection card already exists and just connect it
-  const existingCard = await findCardByName(name);
-  if (existingCard) {
-    const btns = await existingCard.$$('button');
-    for (const btn of btns) {
-      const text = (await btn.getText()).trim();
-      if (text === '连接' || text === '断开') {
-        if (text === '断开') {
-          await btn.click();
-          await browser.pause(1000);
-          const btns2 = await existingCard.$$('button');
-          for (const b of btns2) {
-            if ((await b.getText()).trim() === '连接') { await b.click(); break; }
-          }
-        } else {
-          await btn.click();
+  // Check if the MySQL connection item already exists and just double-click to connect
+  const existingItem = await findCardByName(name);
+  if (existingItem) {
+    await browser.execute((n: string) => {
+      const items = document.querySelectorAll('[data-conn-item]');
+      for (const item of items) {
+        if (item.textContent?.includes(n)) {
+          item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+          return;
         }
-        break;
       }
-    }
+    }, name);
     await browser.waitUntil(
       async () => (await browser.getWindowHandles()).length > 1,
       { timeout: 30000, timeoutMsg: '等待 MySQL 连接窗口打开超时' },
@@ -227,16 +202,18 @@ export async function createAndConnectMySQL(opts: {
   await browser.switchToWindow(mainWindow);
   await browser.pause(1000);
 
-  // Now connect
+  // Now connect by double-clicking the item
   const card = await findCardByName(name);
-  if (!card) throw new Error(`未找到 MySQL 连接卡片 "${name}"`);
-  const cardBtns = await card.$$('button');
-  for (const btn of cardBtns) {
-    if ((await btn.getText()).trim() === '连接') {
-      await btn.click();
-      break;
+  if (!card) throw new Error(`未找到 MySQL 连接 "${name}"`);
+  await browser.execute((n: string) => {
+    const items = document.querySelectorAll('[data-conn-item]');
+    for (const item of items) {
+      if (item.textContent?.includes(n)) {
+        item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+        return;
+      }
     }
-  }
+  }, name);
 
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length > 1,
@@ -257,16 +234,17 @@ export async function createAndConnectMySQL(opts: {
 export async function connectToCard(cardName: string) {
   const mainWindow = await browser.getWindowHandle();
   const card = await findCardByName(cardName);
-  if (!card) throw new Error(`未找到连接卡片 "${cardName}"`);
+  if (!card) throw new Error(`未找到连接 "${cardName}"`);
 
-  const btns = await card.$$('button');
-  for (const btn of btns) {
-    const text = (await btn.getText()).trim();
-    if (text === '连接') {
-      await btn.click();
-      break;
+  await browser.execute((n: string) => {
+    const items = document.querySelectorAll('[data-conn-item]');
+    for (const item of items) {
+      if (item.textContent?.includes(n)) {
+        item.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+        return;
+      }
     }
-  }
+  }, cardName);
 
   await browser.waitUntil(
     async () => (await browser.getWindowHandles()).length > 1,

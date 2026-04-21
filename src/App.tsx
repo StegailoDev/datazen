@@ -26,6 +26,12 @@ const SettingsWindow = lazy(() =>
     return { default: m.SettingsWindow };
   }),
 );
+const DataSyncWindow = lazy(() =>
+  import('./windows/data-sync/DataSyncWindow').then((m) => {
+    mark('DataSyncWindow chunk loaded');
+    return { default: m.DataSyncWindow };
+  }),
+);
 
 const windowKind = getWindowKind();
 mark(`windowKind resolved: "${windowKind}"`);
@@ -42,6 +48,8 @@ function WindowContent() {
       return <ConnectionWindow />;
     case 'settings':
       return <SettingsWindow />;
+    case 'data-sync':
+      return <DataSyncWindow />;
     case 'main':
     default:
       return <MainWindow />;
