@@ -229,7 +229,7 @@ impl Store {
                 port: Some(5432),
                 database: Some("postgres".to_string()),
                 username: Some("postgres".to_string()),
-                password: Some("REDACTED_PG_PASSWORD".to_string()),
+                password: Some(String::new()),
                 ssl_mode: crate::db::SslMode::Disable,
                 connection_timeout: 30,
                 ssh_tunnel: None,

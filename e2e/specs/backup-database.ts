@@ -26,11 +26,11 @@ const PG_CONFIG = {
   id: 'e2e-backup-pg',
   name: 'E2E-Backup-PG',
   databaseType: 'postgresql',
-  host: 'localhost',
-  port: 5432,
-  database: 'postgres',
-  username: 'postgres',
-  password: '',
+  host: process.env.E2E_PG_HOST || 'localhost',
+  port: Number(process.env.E2E_PG_PORT) || 5432,
+  database: process.env.E2E_PG_DB || 'postgres',
+  username: process.env.E2E_PG_USER || 'postgres',
+  password: process.env.E2E_PG_PASSWORD || '',
   sslMode: 'disable',
 };
 
@@ -64,7 +64,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     const dbs = await invokeBackend<string[]>('get_databases', { connectionId });
     expect(Array.isArray(dbs)).toBe(true);
     expect(dbs.length).toBeGreaterThan(0);
-    expect(dbs).toContain('postgres');
+    expect(dbs).toContain(PG_CONFIG.database);
   });
 
   it('BACKUP-003: backup_database creates a SQL file', async () => {
@@ -72,7 +72,7 @@ describe('数据库备份功能 (BACKUP)', () => {
 
     await invokeBackend('backup_database', {
       connectionId,
-      database: 'postgres',
+      database: PG_CONFIG.database,
       outputPath: outPath,
       options: [],
       compress: false,
@@ -93,7 +93,7 @@ describe('数据库备份功能 (BACKUP)', () => {
 
     await invokeBackend('backup_database', {
       connectionId,
-      database: 'postgres',
+      database: PG_CONFIG.database,
       outputPath: outPath,
       options: ['schema-only'],
       compress: false,
@@ -114,7 +114,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     // Use a small table subset via pg_dump -t to avoid dumping 1M+ rows
     await invokeBackend('backup_database', {
       connectionId,
-      database: 'postgres',
+      database: PG_CONFIG.database,
       outputPath: outPath,
       options: ['data-only'],
       compress: false,
@@ -133,7 +133,7 @@ describe('数据库备份功能 (BACKUP)', () => {
 
     await invokeBackend('backup_database', {
       connectionId,
-      database: 'postgres',
+      database: PG_CONFIG.database,
       outputPath: outPath,
       options: ['clean', 'schema-only'],
       compress: false,
@@ -152,7 +152,7 @@ describe('数据库备份功能 (BACKUP)', () => {
 
     await invokeBackend('backup_database', {
       connectionId,
-      database: 'postgres',
+      database: PG_CONFIG.database,
       outputPath: outPath,
       options: ['create', 'schema-only'],
       compress: false,
@@ -171,7 +171,7 @@ describe('数据库备份功能 (BACKUP)', () => {
 
     await invokeBackend('backup_database', {
       connectionId,
-      database: 'postgres',
+      database: PG_CONFIG.database,
       outputPath: outPath,
       options: ['schema-only'],
       compress: true,
@@ -195,7 +195,7 @@ describe('数据库备份功能 (BACKUP)', () => {
 
     await invokeBackend('backup_database', {
       connectionId,
-      database: 'postgres',
+      database: PG_CONFIG.database,
       outputPath: outPath,
       options: ['clean', 'schema-only'],
       compress: false,
@@ -216,7 +216,7 @@ describe('数据库备份功能 (BACKUP)', () => {
     try {
       await invokeBackend('backup_database', {
         connectionId: 'nonexistent-id',
-        database: 'postgres',
+        database: PG_CONFIG.database,
         outputPath: outPath,
         options: [],
         compress: false,

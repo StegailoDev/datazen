@@ -3,20 +3,22 @@
 # Creates test databases and a restricted user in both PostgreSQL and MySQL.
 set -euo pipefail
 
-PG_SUPER="flyxl"
-PG_USER="postgres"
-PG_READONLY="datazen_readonly"
-PG_READONLY_PW="REDACTED_RO_PASSWORD"
+PG_SUPER="${E2E_PG_SUPER:-postgres}"
+PG_USER="${E2E_PG_USER:-postgres}"
+PG_READONLY="${E2E_PG_RO_USER:-datazen_readonly}"
+PG_READONLY_PW="${E2E_PG_RO_PASSWORD:?Set E2E_PG_RO_PASSWORD before running this script}"
 
-MYSQL_USER="root"
-MYSQL_READONLY="datazen_readonly"
-MYSQL_READONLY_PW="REDACTED_RO_PASSWORD"
+MYSQL_USER="${E2E_MYSQL_USER:-root}"
+MYSQL_READONLY="${E2E_MYSQL_RO_USER:-datazen_readonly}"
+MYSQL_READONLY_PW="${E2E_MYSQL_RO_PASSWORD:?Set E2E_MYSQL_RO_PASSWORD before running this script}"
 
 echo "=== PostgreSQL setup ==="
 
-# Create test databases (postgres has CREATEDB)
+PG_DB="${E2E_PG_DB:-postgres}"
+
+# Create test databases
 for db in datazen_sync_src datazen_sync_tgt; do
-  if psql -U "$PG_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" | grep -q 1; then
+  if psql -U "$PG_USER" -d "$PG_DB" -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" | grep -q 1; then
     echo "  DB $db already exists"
   else
     createdb -U "$PG_USER" "$db"
@@ -25,10 +27,10 @@ for db in datazen_sync_src datazen_sync_tgt; do
 done
 
 # Create restricted user (requires superuser)
-if psql -U "$PG_SUPER" -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='$PG_READONLY'" | grep -q 1; then
+if psql -U "$PG_SUPER" -d "$PG_DB" -tAc "SELECT 1 FROM pg_roles WHERE rolname='$PG_READONLY'" | grep -q 1; then
   echo "  Role $PG_READONLY already exists"
 else
-  psql -U "$PG_SUPER" -d postgres -c "CREATE USER $PG_READONLY WITH PASSWORD '$PG_READONLY_PW';"
+  psql -U "$PG_SUPER" -d "$PG_DB" -c "CREATE USER $PG_READONLY WITH PASSWORD '$PG_READONLY_PW';"
   echo "  Created role $PG_READONLY"
 fi
 

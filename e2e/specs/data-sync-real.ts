@@ -8,17 +8,17 @@
  */
 import { expect, browser, $ } from '@wdio/globals';
 
-// ── Connection configs ──────────────────────────────────────────────
+// ── Connection configs (credentials from environment variables) ─────
 
 const PG_SRC = {
   id: 'sync_pg_src',
   name: 'SyncTest-PG-Src',
   databaseType: 'postgresql',
-  host: 'localhost',
-  port: 5432,
+  host: process.env.E2E_PG_HOST || 'localhost',
+  port: Number(process.env.E2E_PG_PORT) || 5432,
   database: 'datazen_sync_src',
-  username: 'postgres',
-  password: 'REDACTED_PG_PASSWORD',
+  username: process.env.E2E_PG_USER || 'postgres',
+  password: process.env.E2E_PG_PASSWORD || '',
   sslMode: 'disable',
 };
 
@@ -26,11 +26,11 @@ const PG_TGT = {
   id: 'sync_pg_tgt',
   name: 'SyncTest-PG-Tgt',
   databaseType: 'postgresql',
-  host: 'localhost',
-  port: 5432,
+  host: process.env.E2E_PG_HOST || 'localhost',
+  port: Number(process.env.E2E_PG_PORT) || 5432,
   database: 'datazen_sync_tgt',
-  username: 'postgres',
-  password: 'REDACTED_PG_PASSWORD',
+  username: process.env.E2E_PG_USER || 'postgres',
+  password: process.env.E2E_PG_PASSWORD || '',
   sslMode: 'disable',
 };
 
@@ -38,11 +38,11 @@ const PG_RO = {
   id: 'sync_pg_ro',
   name: 'SyncTest-PG-RO',
   databaseType: 'postgresql',
-  host: 'localhost',
-  port: 5432,
+  host: process.env.E2E_PG_HOST || 'localhost',
+  port: Number(process.env.E2E_PG_PORT) || 5432,
   database: 'datazen_sync_tgt',
-  username: 'datazen_readonly',
-  password: 'REDACTED_RO_PASSWORD',
+  username: process.env.E2E_PG_RO_USER || 'datazen_readonly',
+  password: process.env.E2E_PG_RO_PASSWORD || '',
   sslMode: 'disable',
 };
 
@@ -50,11 +50,11 @@ const MY_TGT = {
   id: 'sync_my_tgt',
   name: 'E2E-MySQL-Types',
   databaseType: 'mysql',
-  host: '127.0.0.1',
-  port: 3306,
-  database: 'datazen_test',
-  username: 'root',
-  password: '',
+  host: process.env.E2E_MYSQL_HOST || '127.0.0.1',
+  port: Number(process.env.E2E_MYSQL_PORT) || 3306,
+  database: process.env.E2E_MYSQL_DB || 'datazen_test',
+  username: process.env.E2E_MYSQL_USER || 'root',
+  password: process.env.E2E_MYSQL_PASSWORD || '',
   sslMode: 'disable',
 };
 
@@ -62,11 +62,11 @@ const MY_RO = {
   id: 'sync_my_ro',
   name: 'SyncTest-MY-RO',
   databaseType: 'mysql',
-  host: '127.0.0.1',
-  port: 3306,
-  database: 'datazen_test',
-  username: 'datazen_readonly',
-  password: 'REDACTED_RO_PASSWORD',
+  host: process.env.E2E_MYSQL_HOST || '127.0.0.1',
+  port: Number(process.env.E2E_MYSQL_PORT) || 3306,
+  database: process.env.E2E_MYSQL_DB || 'datazen_test',
+  username: process.env.E2E_MYSQL_RO_USER || 'datazen_readonly',
+  password: process.env.E2E_MYSQL_RO_PASSWORD || '',
   sslMode: 'disable',
 };
 

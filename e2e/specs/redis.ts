@@ -8,9 +8,9 @@ import {
 } from '../helpers.js';
 
 const CONN_NAME = 'E2E-Redis';
-const REDIS_HOST = 'REDACTED_HOST';
-const REDIS_PORT = '6379';
-const REDIS_PASSWORD = 'REDACTED_REDIS_PASSWORD';
+const REDIS_HOST = process.env.E2E_REDIS_HOST || '127.0.0.1';
+const REDIS_PORT = process.env.E2E_REDIS_PORT || '6379';
+const REDIS_PASSWORD = process.env.E2E_REDIS_PASSWORD || '';
 
 async function createAndConnectRedis() {
   const mainWindow = await browser.getWindowHandle();
