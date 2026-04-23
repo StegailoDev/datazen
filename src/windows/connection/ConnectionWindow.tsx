@@ -395,7 +395,8 @@ export function ConnectionWindow() {
   }
 
   const dbType = databaseType as DatabaseType;
-  const isKeyValue = DB_REGISTRY[dbType]?.isKeyValue ?? false;
+  const dbMeta = DB_REGISTRY[dbType];
+  const viewMode = dbMeta?.connectionView ?? 'sql';
   const centerTitle = `${connectionName} - ${getDbLabel(dbType)} - DataZen`;
 
   return (
@@ -411,8 +412,8 @@ export function ConnectionWindow() {
         }
       />
 
-      {/* Redis: use dedicated view */}
-      {isKeyValue ? (
+      {/* Key-value stores: use dedicated view */}
+      {viewMode === 'keyvalue' ? (
         <RedisConnectionView
           connectionId={connectionId}
           connectionName={connectionName}
@@ -539,13 +540,7 @@ export function ConnectionWindow() {
             )}
 
             {/* Panel content */}
-            {activePanel?.type === 'table' && isKeyValue && (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <TableView connectionId={connectionId} tableName={activePanel.tableName} />
-              </div>
-            )}
-
-            {activePanel?.type === 'table' && !isKeyValue && (
+            {activePanel?.type === 'table' && (
               <>
                 {/* Sub-tab bar */}
                 <div className="flex shrink-0 border-b border-edge bg-surface-alt">
@@ -624,7 +619,7 @@ export function ConnectionWindow() {
                 <div className="text-center">
                   <Database className="mx-auto h-10 w-10 opacity-20" />
                   <div className="mt-3 text-sm">
-                    {`${isKeyValue ? t('connWin.selectKey') : t('connWin.selectTable')} (⌘N ${t('connWin.newQuery')})`}
+                    {`${viewMode !== 'sql' ? t('connWin.selectKey') : t('connWin.selectTable')} (⌘N ${t('connWin.newQuery')})`}
                   </div>
                 </div>
               </div>

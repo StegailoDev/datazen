@@ -5,7 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
-import { getDbLabel, getDbIcon, getDbIconColor } from '../../lib/databaseTypes';
+import { getDbLabel, getDbIcon, getDbIconColor, DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ConnectionConfig, DatabaseType } from '../../types';
 
 interface DatabaseInfo {
@@ -68,7 +68,7 @@ export function BackupWindow() {
 
   const backupOptions = useMemo(() => {
     if (!selectedConn) return [];
-    return selectedConn.databaseType === 'mysql' || selectedConn.databaseType === 'mariadb'
+    return DB_REGISTRY[selectedConn.databaseType]?.sqlDialect === 'mysql'
       ? MYSQL_OPTIONS
       : PG_OPTIONS;
   }, [selectedConn]);

@@ -3,6 +3,8 @@ import { Check, Copy, Loader2 } from 'lucide-react';
 import { queryCommands } from '../../commands/query';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
+import type { DatabaseType } from '../../types';
 
 interface DDLViewProps {
   connectionId: string;
@@ -23,8 +25,9 @@ export function DDLView({ connectionId, tableName, databaseType }: DDLViewProps)
     setError(null);
     setDdl('');
 
-    const isMySQL = databaseType === 'mysql' || databaseType === 'mariadb';
-    const sql = isMySQL
+    const dialect = DB_REGISTRY[databaseType as DatabaseType]?.sqlDialect;
+    const isMySQLDialect = dialect === 'mysql';
+    const sql = isMySQLDialect
       ? `SHOW CREATE TABLE \`${tableName}\``
       : `
       SELECT
@@ -50,7 +53,7 @@ export function DDLView({ connectionId, tableName, databaseType }: DDLViewProps)
       .then((multi) => {
         if (!cancelled) {
           const row = multi.results[0]?.rows[0];
-          const val = isMySQL ? row?.[1] : row?.[0];
+          const val = isMySQLDialect ? row?.[1] : row?.[0];
           setDdl(typeof val === 'string' ? val : val != null ? String(val) : `-- ${t('ddl.getFailed')}`);
           setLoading(false);
         }

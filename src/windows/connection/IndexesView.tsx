@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Plus, Trash2, AlertTriangle } from 'lucide-react';
 import { databaseCommands } from '../../commands/database';
-import type { IndexInfo, TableSchema, ColumnSchema } from '../../types';
+import type { IndexInfo, TableSchema, ColumnSchema, DatabaseType } from '../../types';
 import { cn } from '../../lib/cn';
 import { Button } from '../../components/ui/Button';
 import { useI18n } from '../../hooks/useI18n';
+import { DB_REGISTRY } from '../../lib/databaseTypes';
 
 interface IndexesViewProps {
   connectionId: string;
@@ -34,14 +35,15 @@ interface CreateIndexDialogProps {
 
 function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting, databaseType }: CreateIndexDialogProps) {
   const { t } = useI18n();
-  const isMySQL = databaseType === 'mysql' || databaseType === 'mariadb';
+  const meta = DB_REGISTRY[databaseType as DatabaseType];
+  const isMySQLDialect = meta?.sqlDialect === 'mysql';
   const [indexName, setIndexName] = useState('');
   const [selectedCols, setSelectedCols] = useState<string[]>([]);
   const [isUnique, setIsUnique] = useState(false);
   const [indexType, setIndexType] = useState<'btree' | 'hash' | 'gin' | 'gist'>('btree');
 
   const autoName = `idx_${tableName}_${selectedCols.join('_')}`;
-  const q = isMySQL ? '`' : '"';
+  const q = meta?.quoteChar || '"';
 
   const toggleColumn = (col: string) => {
     setSelectedCols((prev) =>
@@ -131,8 +133,8 @@ function CreateIndexDialog({ columns, tableName, onSubmit, onCancel, submitting,
             >
               <option value="btree">B-Tree</option>
               <option value="hash">Hash</option>
-              {!isMySQL && <option value="gin">GIN</option>}
-              {!isMySQL && <option value="gist">GiST</option>}
+              {!isMySQLDialect && <option value="gin">GIN</option>}
+              {!isMySQLDialect && <option value="gist">GiST</option>}
             </select>
           </div>
         </div>
@@ -204,8 +206,9 @@ function DeleteConfirmDialog({ indexName, onConfirm, onCancel, submitting }: Del
 
 export function IndexesView({ connectionId, tableName, createIndexTrigger, databaseType }: IndexesViewProps) {
   const { t } = useI18n();
-  const isMySQL = databaseType === 'mysql' || databaseType === 'mariadb';
-  const q = isMySQL ? '`' : '"';
+  const dbMeta = DB_REGISTRY[databaseType as DatabaseType];
+  const isMySQLDialect = dbMeta?.sqlDialect === 'mysql';
+  const q = dbMeta?.quoteChar || '"';
   const [indexes, setIndexes] = useState<IndexInfo[]>([]);
   const [columns, setColumns] = useState<ColumnSchema[]>([]);
   const [loading, setLoading] = useState(false);
@@ -263,7 +266,7 @@ export function IndexesView({ connectionId, tableName, createIndexTrigger, datab
     if (!deleteTarget) return;
     setSubmitting(true);
     try {
-      const dropSql = isMySQL
+      const dropSql = isMySQLDialect
         ? `DROP INDEX ${q}${deleteTarget}${q} ON ${q}${tableName}${q}`
         : `DROP INDEX ${q}${deleteTarget}${q}`;
       await databaseCommands.executeSQL(connectionId, dropSql);

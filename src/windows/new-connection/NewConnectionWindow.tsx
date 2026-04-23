@@ -160,13 +160,9 @@ export function NewConnectionWindow() {
     setDatabaseType(newType);
     const meta = DB_REGISTRY[newType];
     setPort(meta.defaultPort ? String(meta.defaultPort) : '');
-    if (!meta.supportsSSH) {
-      setSshEnabled(false);
-    }
-    if (newType === 'redis') {
-      setDatabase('0');
-      setUsername('');
-    }
+    if (!meta.supportsSSH) setSshEnabled(false);
+    if (meta.databaseFieldType === 'index') setDatabase('0');
+    if (!meta.defaultUser) setUsername('');
   }
 
   const sshTunnel: SshTunnelConfig | undefined = sshEnabled
@@ -193,28 +189,20 @@ export function NewConnectionWindow() {
       sshTunnel: sshTunnel,
     };
 
-    if (DB_REGISTRY[databaseType].connectionMode === 'file') {
+    const meta = DB_REGISTRY[databaseType];
+    if (meta.connectionMode === 'file') {
       return { ...base, database };
     }
 
-    if (databaseType === 'redis') {
-      return {
-        ...base,
-        host: host || DB_REGISTRY[databaseType].defaultHost || undefined,
-        port: Number(port) || DB_REGISTRY[databaseType].defaultPort || undefined,
-        database: normalizeRedisDatabaseField(database),
-        password: password || undefined,
-      };
-    }
-
-    return {
+    const conn: ConnectionConfig = {
       ...base,
-      host: host || DB_REGISTRY[databaseType].defaultHost || undefined,
-      port: Number(port) || DB_REGISTRY[databaseType].defaultPort || undefined,
-      database: database || undefined,
-      username: username || DB_REGISTRY[databaseType].defaultUser || undefined,
+      host: host || meta.defaultHost || undefined,
+      port: Number(port) || meta.defaultPort || undefined,
+      database: meta.databaseFieldType === 'index' ? normalizeRedisDatabaseField(database) : database || undefined,
       password: password || undefined,
     };
+    if (meta.defaultUser) conn.username = username || meta.defaultUser || undefined;
+    return conn;
   }, [colorTag, database, databaseType, group, host, name, password, port, sslMode, sshTunnel, t, username, editId]);
 
   async function onTest() {
@@ -239,9 +227,10 @@ export function NewConnectionWindow() {
     closeWindow();
   }
 
-  const isFileMode = DB_REGISTRY[databaseType].connectionMode === 'file';
-  const isSqlite = isFileMode;
-  const isRedis = databaseType === 'redis';
+  const curMeta = DB_REGISTRY[databaseType];
+  const isFileMode = curMeta.connectionMode === 'file';
+  const isIndexMode = curMeta.databaseFieldType === 'index';
+  const hasUsername = !!curMeta.defaultUser;
 
   const sslOptions = useMemo(
     () => [
@@ -303,12 +292,12 @@ export function NewConnectionWindow() {
                 <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('newConn.namePlaceholder')} autoFocus />
               </div>
 
-              {isSqlite ? (
+              {isFileMode ? (
                 <div className="md:col-span-2">
                   <Label required>{t('newConn.dbFilePath')}</Label>
                   <Input value={database} onChange={(e) => setDatabase(e.target.value)} placeholder="/path/to/db.sqlite" />
                 </div>
-              ) : isRedis ? (
+              ) : (
                 <>
                   <div>
                     <Label required>{t('newConn.host')}</Label>
@@ -318,53 +307,36 @@ export function NewConnectionWindow() {
                     <Label required>{t('newConn.port')}</Label>
                     <Input value={port} onChange={(e) => setPort(e.target.value)} />
                   </div>
-                  <div className="md:col-span-2">
-                    <Label>{t('newConn.databaseIndex')}</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={15}
-                      value={database}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === '') {
-                          setDatabase('');
-                          return;
-                        }
-                        setDatabase(
-                          String(Math.min(15, Math.max(0, parseInt(v, 10) || 0))),
-                        );
-                      }}
-                      onBlur={() => {
-                        if (database.trim() === '') setDatabase('0');
-                      }}
-                      placeholder="0"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <Label>{t('newConn.password')}</Label>
-                    <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <Label required>{t('newConn.host')}</Label>
-                    <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="prod-db.example.com" />
-                  </div>
-                  <div>
-                    <Label required>{t('newConn.port')}</Label>
-                    <Input value={port} onChange={(e) => setPort(e.target.value)} />
-                  </div>
-                  <div className="md:col-span-2">
-                    <Label>{t('newConn.database')}</Label>
-                    <Input value={database} onChange={(e) => setDatabase(e.target.value)} placeholder="myapp_production" />
-                  </div>
-                  <div>
-                    <Label>{t('newConn.username')}</Label>
-                    <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="postgres" />
-                  </div>
-                  <div>
+                  {isIndexMode ? (
+                    <div className="md:col-span-2">
+                      <Label>{t('newConn.databaseIndex')}</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={15}
+                        value={database}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === '') { setDatabase(''); return; }
+                          setDatabase(String(Math.min(15, Math.max(0, parseInt(v, 10) || 0))));
+                        }}
+                        onBlur={() => { if (database.trim() === '') setDatabase('0'); }}
+                        placeholder="0"
+                      />
+                    </div>
+                  ) : (
+                    <div className="md:col-span-2">
+                      <Label>{t('newConn.database')}</Label>
+                      <Input value={database} onChange={(e) => setDatabase(e.target.value)} placeholder="myapp_production" />
+                    </div>
+                  )}
+                  {hasUsername && (
+                    <div>
+                      <Label>{t('newConn.username')}</Label>
+                      <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="postgres" />
+                    </div>
+                  )}
+                  <div className={hasUsername ? '' : 'md:col-span-2'}>
                     <Label>{t('newConn.password')}</Label>
                     <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
                   </div>
@@ -388,7 +360,7 @@ export function NewConnectionWindow() {
             {showAdvanced && (
               <div className="mt-3 space-y-4 rounded-md border border-edge bg-surface p-4">
                 {/* SSH tunnel */}
-                {!isSqlite && (
+                {curMeta.supportsSSH && (
                   <div>
                     <label className="flex items-center gap-2 text-sm text-fg-secondary">
                       <input
@@ -467,7 +439,7 @@ export function NewConnectionWindow() {
                   </div>
                 )}
 
-                {!isRedis && (
+                {curMeta.supportsSSL && (
                   <div>
                     <Label>{t('newConn.sslMode')}</Label>
                     <Select

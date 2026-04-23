@@ -23,7 +23,7 @@ export interface DatabaseTypeMeta {
   defaultPort: number;
   /** Default host */
   defaultHost: string;
-  /** Default username */
+  /** Default username (empty string = no username field in form) */
   defaultUser: string;
   /** Identifier quoting character (`"` for SQL standard, `` ` `` for MySQL) */
   quoteChar: string;
@@ -31,6 +31,8 @@ export interface DatabaseTypeMeta {
   connectionMode: ConnectionMode;
   /** Whether SSH tunneling is supported */
   supportsSSH: boolean;
+  /** Whether SSL/TLS configuration is supported */
+  supportsSSL: boolean;
   /** Whether database backup is supported */
   supportsBackup: boolean;
   /** Whether this type supports schemas (tables, queries, etc.) */
@@ -41,6 +43,12 @@ export interface DatabaseTypeMeta {
   supportsSQL: boolean;
   /** Category aligned with backend `DriverCategory` / connection info */
   category: 'sql' | 'kv' | 'document';
+  /** Which connection view component to render: sql (table browser), keyvalue (Redis), document (future MongoDB) */
+  connectionView: 'sql' | 'keyvalue' | 'document';
+  /** SQL dialect family for DDL/index queries; undefined for non-SQL types */
+  sqlDialect?: 'postgresql' | 'mysql' | 'sqlite';
+  /** How the "database" field behaves in the connection form */
+  databaseFieldType: 'name' | 'path' | 'index';
 }
 
 export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
@@ -55,11 +63,15 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     quoteChar: '"',
     connectionMode: 'server',
     supportsSSH: true,
+    supportsSSL: true,
     supportsBackup: true,
     supportsTables: true,
     isKeyValue: false,
     supportsSQL: true,
     category: 'sql',
+    connectionView: 'sql',
+    sqlDialect: 'postgresql',
+    databaseFieldType: 'name',
   },
   mysql: {
     label: 'MySQL',
@@ -72,11 +84,15 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     quoteChar: '`',
     connectionMode: 'server',
     supportsSSH: true,
+    supportsSSL: true,
     supportsBackup: true,
     supportsTables: true,
     isKeyValue: false,
     supportsSQL: true,
     category: 'sql',
+    connectionView: 'sql',
+    sqlDialect: 'mysql',
+    databaseFieldType: 'name',
   },
   mariadb: {
     label: 'MariaDB',
@@ -89,11 +105,15 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     quoteChar: '`',
     connectionMode: 'server',
     supportsSSH: true,
+    supportsSSL: true,
     supportsBackup: true,
     supportsTables: true,
     isKeyValue: false,
     supportsSQL: true,
     category: 'sql',
+    connectionView: 'sql',
+    sqlDialect: 'mysql',
+    databaseFieldType: 'name',
   },
   sqlite: {
     label: 'SQLite',
@@ -106,11 +126,15 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     quoteChar: '"',
     connectionMode: 'file',
     supportsSSH: false,
+    supportsSSL: false,
     supportsBackup: false,
     supportsTables: true,
     isKeyValue: false,
     supportsSQL: true,
     category: 'sql',
+    connectionView: 'sql',
+    sqlDialect: 'sqlite',
+    databaseFieldType: 'path',
   },
   redis: {
     label: 'Redis',
@@ -123,11 +147,14 @@ export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
     quoteChar: '',
     connectionMode: 'server',
     supportsSSH: true,
+    supportsSSL: false,
     supportsBackup: false,
     supportsTables: false,
     isKeyValue: true,
     supportsSQL: false,
     category: 'kv',
+    connectionView: 'keyvalue',
+    databaseFieldType: 'index',
   },
 };
 
