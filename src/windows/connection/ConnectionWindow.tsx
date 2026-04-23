@@ -44,6 +44,7 @@ import { TableStructureEditor } from './TableStructureEditor';
 import { ContextMenu } from '../../components/ui/ContextMenu';
 import type { ContextMenuEntry } from '../../components/ui/ContextMenu';
 import type { TranslationKey } from '../../locales';
+import { RedisConnectionView } from './RedisConnectionView';
 
 // ── Panel types ──
 
@@ -410,6 +411,15 @@ export function ConnectionWindow() {
         }
       />
 
+      {/* Redis: use dedicated view */}
+      {isKeyValue ? (
+        <RedisConnectionView
+          connectionId={connectionId}
+          connectionName={connectionName}
+          initialDatabase={initialDatabase}
+        />
+      ) : (
+      <>
       {/* Toolbar */}
       <div className="flex h-12 min-h-[48px] shrink-0 items-center gap-2 border-b border-edge bg-surface-alt px-4">
         <Button variant="secondary" className="h-8 w-8 !px-0" title={`${t('connWin.refresh')} (⌘R)`} onClick={handleRefresh}>
@@ -419,12 +429,10 @@ export function ConnectionWindow() {
           <Plus className="h-4 w-4" />
           {t('connWin.newQuery')}
         </Button>
-        {!isKeyValue && (
-          <Button variant="secondary" className="h-8" onClick={handleCreateTable}>
-            <TableProperties className="h-4 w-4" />
-            {t('connWin.newTable')}
-          </Button>
-        )}
+        <Button variant="secondary" className="h-8" onClick={handleCreateTable}>
+          <TableProperties className="h-4 w-4" />
+          {t('connWin.newTable')}
+        </Button>
         <div className="mx-1 h-6 w-px bg-edge" />
 
         <div className="relative min-w-0 max-w-[280px] flex-1">
@@ -432,7 +440,7 @@ export function ConnectionWindow() {
           <Input
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={isKeyValue ? t('connWin.searchKeys') : t('connWin.searchTables')}
+            placeholder={t('connWin.searchTables')}
             className="h-8 pl-9 text-xs"
           />
         </div>
@@ -454,7 +462,7 @@ export function ConnectionWindow() {
             selectedTable={activePanel?.type === 'table' ? activePanel.tableName : null}
             searchQuery={searchQuery}
             onSelectTable={handleSelectTable}
-            onTableContextMenu={isKeyValue ? undefined : handleTableContextMenu}
+            onTableContextMenu={handleTableContextMenu}
           />
         </aside>
 
@@ -705,6 +713,8 @@ export function ConnectionWindow() {
         onImported={handleRefresh}
         databaseType={databaseType}
       />
+      </>
+      )}
     </div>
   );
 }

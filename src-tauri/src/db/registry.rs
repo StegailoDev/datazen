@@ -12,12 +12,15 @@ use tokio::sync::RwLock;
 /// Holds all registered drivers.
 pub struct DriverRegistry {
     drivers: Arc<RwLock<HashMap<DatabaseType, Arc<dyn DatabaseDriver>>>>,
+    /// Same [`Arc`] identity as the registered [`DatabaseType::Redis`] driver — use for `kv_*` commands.
+    pub redis: Arc<RedisDriver>,
 }
 
 impl DriverRegistry {
-    pub fn new() -> Self {
+    fn new(redis: Arc<RedisDriver>) -> Self {
         Self {
             drivers: Arc::new(RwLock::new(HashMap::new())),
+            redis,
         }
     }
 
@@ -37,15 +40,14 @@ impl DriverRegistry {
     }
 }
 
-impl Default for DriverRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Registers built-in drivers.
 pub async fn init_drivers() -> DriverRegistry {
-    let registry = DriverRegistry::new();
+    let redis = Arc::new(RedisDriver::new());
+    let registry = DriverRegistry::new(redis.clone());
+    let redis_dyn: Arc<dyn DatabaseDriver> = redis.clone();
+    registry
+        .register(redis_dyn)
+        .await;
     registry
         .register(Arc::new(PostgresDriver::new()))
         .await;
@@ -57,9 +59,6 @@ pub async fn init_drivers() -> DriverRegistry {
         .await;
     registry
         .register(Arc::new(SqliteDriver::new()))
-        .await;
-    registry
-        .register(Arc::new(RedisDriver::new()))
         .await;
     registry
 }

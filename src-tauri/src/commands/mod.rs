@@ -3,8 +3,8 @@
 use crate::cache::SchemaCache;
 use crate::db::registry::DriverRegistry;
 use crate::db::{
-    ConnectionConfig, DatabaseType, ExplainResult, MultiQueryResult, QueryResult, ServerInfo,
-    TableDataResult, TableInfo, TableSchema,
+    ConnectionConfig, DatabaseType, ExplainResult, MultiQueryResult, ServerInfo, TableDataResult,
+    TableInfo, TableSchema,
 };
 use crate::services::{ConnectionManager, FilterCondition, OrderBy, QueryExecutor, SortCondition};
 use crate::store::{AppSettings, QueryHistoryEntry, Store, SyncTask};
@@ -194,6 +194,72 @@ pub async fn get_tables(
         .map_err(|e| log_err("get_tables", &e))?;
     tracing::debug!(%connection_id, %database, count = tables.len(), "get_tables OK");
     Ok(tables)
+}
+
+/// Scan Redis keys with their types, TTL, and value preview (paginated via SCAN cursor).
+#[tauri::command]
+pub async fn kv_scan_keys(
+    state: State<'_, AppState>,
+    connection_id: String,
+    db_index: u32,
+    pattern: String,
+    cursor: u64,
+    count: u32,
+) -> Result<serde_json::Value, String> {
+    let config = state
+        .connection_manager
+        .get_connection_config(&connection_id)
+        .await
+        .map_err(|e| log_err("kv_scan_keys", &e))?;
+    if config.database_type != DatabaseType::Redis {
+        return Err("Not a Redis connection".to_string());
+    }
+    let (_driver, handle) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .map_err(|e| log_err("kv_scan_keys", &e))?;
+    let (next_cursor, keys, db_size) = state
+        .driver_registry
+        .redis
+        .scan_keys_with_info(&handle, db_index, &pattern, cursor, count)
+        .await
+        .map_err(|e| log_err("kv_scan_keys", &e))?;
+    Ok(serde_json::json!({
+        "cursor": next_cursor,
+        "keys": keys,
+        "dbSize": db_size,
+    }))
+}
+
+/// Return the full JSON value for a Redis key in the given logical database.
+#[tauri::command]
+pub async fn kv_get_key(
+    state: State<'_, AppState>,
+    connection_id: String,
+    db_index: u32,
+    key: String,
+) -> Result<serde_json::Value, String> {
+    let config = state
+        .connection_manager
+        .get_connection_config(&connection_id)
+        .await
+        .map_err(|e| log_err("kv_get_key", &e))?;
+    if config.database_type != DatabaseType::Redis {
+        return Err("Not a Redis connection".to_string());
+    }
+    let (_driver, handle) = state
+        .connection_manager
+        .get_connection(&connection_id)
+        .await
+        .map_err(|e| log_err("kv_get_key", &e))?;
+    let detail = state
+        .driver_registry
+        .redis
+        .get_key_detail(&handle, db_index, &key)
+        .await
+        .map_err(|e| log_err("kv_get_key", &e))?;
+    serde_json::to_value(detail).map_err(|e| log_err("kv_get_key", &e))
 }
 
 #[tauri::command]

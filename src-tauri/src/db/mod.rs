@@ -238,6 +238,27 @@ pub struct TableDataResult {
     pub page_size: u32,
 }
 
+/// One key from a Redis SCAN with metadata (for KV browser).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyEntry {
+    pub key: String,
+    pub key_type: String,
+    pub ttl: i64,
+    pub size: u64,
+    pub preview: String,
+}
+
+/// Full value for a single Redis key (for KV detail view).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyDetail {
+    pub key: String,
+    pub key_type: String,
+    pub ttl: i64,
+    pub value: serde_json::Value,
+}
+
 #[derive(Debug, Error)]
 pub enum DriverError {
     #[error("Connection failed: {0}")]
