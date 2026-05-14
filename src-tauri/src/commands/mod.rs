@@ -120,6 +120,15 @@ pub async fn connect(state: State<'_, AppState>, config_id: String) -> Result<St
 }
 
 #[tauri::command]
+pub async fn ping_connection(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> Result<bool, String> {
+    let alive = state.connection_manager.ping(&connection_id).await;
+    Ok(alive)
+}
+
+#[tauri::command]
 pub async fn disconnect(state: State<'_, AppState>, connection_id: String) -> Result<(), String> {
     tracing::info!(%connection_id, "disconnect");
     state
@@ -345,6 +354,7 @@ pub async fn get_table_data(
     page_size: u32,
     filters: Option<Vec<FilterCondition>>,
     sorts: Option<Vec<SortCondition>>,
+    skip_count: Option<bool>,
 ) -> Result<TableDataResult, String> {
     let start = Instant::now();
     tracing::info!(%connection_id, %table, page, page_size, "get_table_data");
@@ -373,6 +383,7 @@ pub async fn get_table_data(
             page_size,
             filters,
             order,
+            skip_count.unwrap_or(false),
         )
         .await
         .map_err(|e| log_err("get_table_data", &e))?;

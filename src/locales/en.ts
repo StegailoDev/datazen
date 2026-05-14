@@ -303,6 +303,12 @@ const en: Record<TranslationKey, string> = {
   'dataTable.sort': 'Sort',
   'dataTable.selectRow': 'Select Row',
 
+  // ── Detail Panel ──
+  'detail.title': 'Details',
+  'detail.show': 'Show detail panel',
+  'detail.hide': 'Hide detail panel',
+  'detail.noSelection': 'Click a row to view field details',
+
   // ── Pagination ──
   'pagination.perPage': 'Per page',
   'pagination.prev': 'Previous',

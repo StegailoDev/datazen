@@ -133,7 +133,8 @@ impl DatabaseDriver for SqliteDriver {
         let pool_id = format!("sqlite_{}", uuid::Uuid::new_v4());
 
         let pool = SqlitePoolOptions::new()
-            .max_connections(5)
+            .max_connections(1)
+            .min_connections(1)
             .acquire_timeout(timeout)
             .connect(&url)
             .await

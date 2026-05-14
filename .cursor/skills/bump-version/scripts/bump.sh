@@ -74,9 +74,6 @@ DISPLAY_FILES=(
   "src/windows/main/MainWindow.tsx"
   "src/windows/data-sync/DataSyncWindow.tsx"
   "e2e/specs/homepage-features.ts"
-  "docs/screenshots/mockup.html"
-  "docs/prototypes/main-window-empty.svg"
-  "docs/prototypes/main-window.svg"
 )
 
 for f in "${DISPLAY_FILES[@]}"; do

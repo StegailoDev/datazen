@@ -8,18 +8,25 @@ export interface EditableCellProps {
   onCancel: () => void;
 }
 
-function toDisplayString(v: unknown): string {
+export function toEditString(v: unknown): string {
   if (v === null || v === undefined) return '';
+  if (typeof v === 'object') {
+    try {
+      return JSON.stringify(v);
+    } catch {
+      return String(v);
+    }
+  }
   return String(v);
 }
 
 export function EditableCell({ value, type, onCommit, onCancel }: EditableCellProps) {
-  const initial = useRef(toDisplayString(value));
-  const [local, setLocal] = useState(() => toDisplayString(value));
+  const initial = useRef(toEditString(value));
+  const [local, setLocal] = useState(() => toEditString(value));
   const done = useRef(false);
 
   useEffect(() => {
-    const s = toDisplayString(value);
+    const s = toEditString(value);
     initial.current = s;
     setLocal(s);
   }, [value]);
@@ -56,6 +63,14 @@ export function EditableCell({ value, type, onCommit, onCancel }: EditableCellPr
       type.includes('real')
     ) {
       onCommit(Number(raw));
+      return;
+    }
+    if (type.includes('json')) {
+      try {
+        onCommit(JSON.parse(raw));
+      } catch {
+        onCommit(raw);
+      }
       return;
     }
     onCommit(raw);

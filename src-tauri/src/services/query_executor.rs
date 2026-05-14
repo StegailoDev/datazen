@@ -86,6 +86,7 @@ impl QueryExecutor {
         page_size: u32,
         filters: Option<Vec<FilterCondition>>,
         order_by: Option<OrderBy>,
+        skip_count: bool,
     ) -> Result<TableDataResult, DriverError> {
         let cached = self
             .schema_cache
@@ -94,28 +95,44 @@ impl QueryExecutor {
 
         let qi = |name: &str| driver.quote_ident(name);
 
-        let count_sql = Self::build_count_sql(&cached.table_name, &cached.columns, &filters, &qi);
-        tracing::info!(%table, %count_sql, "query_executor: count query");
-        let total_rows = match driver.query(handle, &count_sql).await {
-            Ok(count_result) => {
-                count_result.rows.first()
-                    .and_then(|row| row.first())
-                    .and_then(|cell| cell.as_ref())
-                    .and_then(|v| match v {
-                        Value::Integer(n) => Some(*n),
-                        _ => None,
-                    })
-            }
-            Err(_) => None,
-        };
+        let data_sql = Self::build_select_sql(
+            &cached.table_name, &cached.columns, page, page_size,
+            filters.clone(), order_by, &qi,
+        );
 
-        let sql = Self::build_select_sql(&cached.table_name, &cached.columns, page, page_size, filters, order_by, &qi);
-        tracing::info!(%table, %sql, "query_executor: select query");
-        let result = driver.query(handle, &sql).await?;
+        if skip_count {
+            tracing::debug!(%table, "query_executor: skip_count, SELECT only");
+            let result = driver.query(handle, &data_sql).await?;
+            return Ok(TableDataResult {
+                columns: cached.columns,
+                rows: result.rows,
+                total_rows: None,
+                page,
+                page_size,
+            });
+        }
+
+        let count_sql = Self::build_count_sql(
+            &cached.table_name, &cached.columns, &filters, &qi,
+        );
+        tracing::info!(%table, %count_sql, "query_executor: count query");
+
+        let (count_res, data_res) = tokio::try_join!(
+            driver.query(handle, &count_sql),
+            driver.query(handle, &data_sql),
+        )?;
+
+        let total_rows = count_res.rows.first()
+            .and_then(|row| row.first())
+            .and_then(|cell| cell.as_ref())
+            .and_then(|v| match v {
+                Value::Integer(n) => Some(*n),
+                _ => None,
+            });
 
         Ok(TableDataResult {
             columns: cached.columns,
-            rows: result.rows,
+            rows: data_res.rows,
             total_rows,
             page,
             page_size,
@@ -186,6 +203,21 @@ impl QueryExecutor {
                 qi(&order.column),
                 if order.descending { "DESC" } else { "ASC" }
             ));
+        } else {
+            let pk_cols: Vec<&str> = columns
+                .iter()
+                .filter(|c| c.is_primary_key)
+                .map(|c| c.name.as_str())
+                .collect();
+            let order_cols = if pk_cols.is_empty() {
+                columns.first().map(|c| vec![c.name.as_str()]).unwrap_or_default()
+            } else {
+                pk_cols
+            };
+            if !order_cols.is_empty() {
+                let parts: Vec<String> = order_cols.iter().map(|c| format!("{} ASC", qi(c))).collect();
+                sql.push_str(&format!(" ORDER BY {}", parts.join(", ")));
+            }
         }
 
         let offset = page.saturating_mul(page_size);
@@ -226,5 +258,93 @@ impl QueryExecutor {
             Value::Timestamp(s) => format!("'{}'", s.replace('\'', "''")),
             Value::Json(v) => format!("'{}'", v.to_string().replace('\'', "''")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn simple_qi(name: &str) -> String {
+        format!("\"{}\"", name)
+    }
+
+    fn make_column(name: &str, is_pk: bool) -> ColumnSchema {
+        ColumnSchema {
+            name: name.to_string(),
+            data_type: "text".to_string(),
+            nullable: true,
+            default_value: None,
+            comment: None,
+            is_primary_key: is_pk,
+            is_auto_increment: false,
+        }
+    }
+
+    #[test]
+    fn no_explicit_sort_uses_primary_key_order() {
+        let columns = vec![
+            make_column("id", true),
+            make_column("name", false),
+            make_column("email", false),
+        ];
+        let sql = QueryExecutor::build_select_sql(
+            "orders", &columns, 0, 50, None, None, &simple_qi,
+        );
+        assert!(
+            sql.contains("ORDER BY \"id\" ASC"),
+            "Expected default ORDER BY primary key, got: {sql}"
+        );
+    }
+
+    #[test]
+    fn no_explicit_sort_composite_pk_uses_all_pk_columns() {
+        let columns = vec![
+            make_column("order_id", true),
+            make_column("product_id", true),
+            make_column("quantity", false),
+        ];
+        let sql = QueryExecutor::build_select_sql(
+            "order_items", &columns, 0, 50, None, None, &simple_qi,
+        );
+        assert!(
+            sql.contains("ORDER BY \"order_id\" ASC, \"product_id\" ASC"),
+            "Expected composite PK ordering, got: {sql}"
+        );
+    }
+
+    #[test]
+    fn explicit_sort_overrides_default_pk_order() {
+        let columns = vec![
+            make_column("id", true),
+            make_column("name", false),
+        ];
+        let order = OrderBy { column: "name".to_string(), descending: true };
+        let sql = QueryExecutor::build_select_sql(
+            "users", &columns, 0, 50, None, Some(order), &simple_qi,
+        );
+        assert!(
+            sql.contains("ORDER BY \"name\" DESC"),
+            "Expected explicit ORDER BY, got: {sql}"
+        );
+        assert!(
+            !sql.contains("\"id\" ASC"),
+            "Should not contain default PK ordering when explicit sort is given, got: {sql}"
+        );
+    }
+
+    #[test]
+    fn no_pk_no_explicit_sort_still_has_order_by_first_column() {
+        let columns = vec![
+            make_column("col_a", false),
+            make_column("col_b", false),
+        ];
+        let sql = QueryExecutor::build_select_sql(
+            "no_pk_table", &columns, 0, 50, None, None, &simple_qi,
+        );
+        assert!(
+            sql.contains("ORDER BY \"col_a\" ASC"),
+            "Expected fallback ORDER BY first column, got: {sql}"
+        );
     }
 }

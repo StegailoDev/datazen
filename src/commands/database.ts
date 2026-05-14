@@ -30,6 +30,7 @@ export const databaseCommands = {
     pageSize: number;
     filters?: FilterCondition[];
     sorts?: SortCondition[];
+    skipCount?: boolean;
   }) =>
     invoke<TableDataResult>('get_table_data', {
       connectionId: params.connectionId,
@@ -38,6 +39,7 @@ export const databaseCommands = {
       pageSize: params.pageSize,
       filters: params.filters,
       sorts: params.sorts,
+      skipCount: params.skipCount,
     }),
 
   executeSQL: (connectionId: string, sql: string) =>

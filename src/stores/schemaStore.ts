@@ -9,6 +9,7 @@ interface SchemaStore {
   databases: string[];
   tables: TableInfo[];
   views: TableInfo[];
+  columnMap: Record<string, string[]>;
   expanded: Set<string>;
   selectedId: string | null;
   loading: boolean;
@@ -27,6 +28,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
   databases: [],
   tables: [],
   views: [],
+  columnMap: {},
   expanded: new Set(),
   selectedId: null,
   loading: false,
@@ -62,6 +64,22 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       const tables = all.filter((t) => t.tableType !== 'view');
       const views = all.filter((t) => t.tableType === 'view');
       set({ tables, views, loading: false, currentDatabase: database });
+
+      const allNames = all.map((t) => t.name);
+      Promise.all(
+        allNames.map((name) =>
+          databaseCommands
+            .getColumns(connectionId, name)
+            .then((cols) => [name, cols] as const)
+            .catch(() => [name, [] as string[]] as const),
+        ),
+      ).then((entries) => {
+        const map: Record<string, string[]> = {};
+        for (const [name, cols] of entries) {
+          map[name] = cols;
+        }
+        set({ columnMap: map });
+      });
     } catch (e) {
       set({
         loading: false,
@@ -87,6 +105,7 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       databases: [],
       tables: [],
       views: [],
+      columnMap: {},
       expanded: new Set(),
       selectedId: null,
       loading: false,

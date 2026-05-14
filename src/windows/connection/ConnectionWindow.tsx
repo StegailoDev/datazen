@@ -45,6 +45,10 @@ import { ContextMenu } from '../../components/ui/ContextMenu';
 import type { ContextMenuEntry } from '../../components/ui/ContextMenu';
 import type { TranslationKey } from '../../locales';
 import { RedisConnectionView } from './RedisConnectionView';
+import { DetailPanel } from '../../components/DataTable/DetailPanel';
+import { DetailPanelToggle } from '../../components/DataTable/DetailPanelToggle';
+import type { ColumnDef } from '../../components/DataTable/TableHeader';
+import { rowToRecord } from '../../lib/rowToRecord';
 
 // ── Panel types ──
 
@@ -125,10 +129,16 @@ export function ConnectionWindow() {
   const selectedRows = useTableDataStore((s) => s.selectedRows);
   const tableName = useTableDataStore((s) => s.tableName);
   const setDbType = useTableDataStore((s) => s.setDatabaseType);
+  const detailRowIndex = useTableDataStore((s) => s.detailRowIndex);
+  const updateCell = useTableDataStore((s) => s.updateCell);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const createQueryTab = useQueryStore((s) => s.createTab);
   const closeQueryTab = useQueryStore((s) => s.closeTab);
   const setQueryConnectionId = useQueryStore((s) => s.setConnectionId);
+  const queryTabs = useQueryStore((s) => s.tabs);
+  const resultDetailRowIndex = useQueryStore((s) => s.resultDetailRowIndex);
+  const updateResultCell = useQueryStore((s) => s.updateResultCell);
 
   const activePanel = panels.find((p) => p.id === activePanelId) ?? null;
 
@@ -375,6 +385,16 @@ export function ConnectionWindow() {
     return () => cleanup?.();
   }, [connectionId]);
 
+  // Heartbeat: keep backend connection alive while window is open
+  useEffect(() => {
+    if (!connectionId) return;
+    const HEARTBEAT_MS = 5 * 60 * 1000; // 5 minutes
+    const timer = setInterval(() => {
+      connectionCommands.pingConnection(connectionId).catch(() => {});
+    }, HEARTBEAT_MS);
+    return () => clearInterval(timer);
+  }, [connectionId]);
+
   useKeyboardShortcuts([
     { key: 'mod+n', scope: 'global', description: t('connWin.newQuery'), action: handleNewQuery },
     { key: 'mod+r', scope: 'global', description: t('connWin.refresh'), action: handleRefresh },
@@ -399,6 +419,46 @@ export function ConnectionWindow() {
   const viewMode = dbMeta?.connectionView ?? 'sql';
   const centerTitle = `${connectionName} - ${getDbLabel(dbType)} - DataZen`;
 
+  const activeQueryTab = activePanel?.type === 'query'
+    ? queryTabs.find((t) => t.id === (activePanel as QueryPanelInfo).queryTabId)
+    : null;
+  const activeQueryResult = activeQueryTab?.results[activeQueryTab.activeResultIdx] ?? null;
+
+  const detailColumnDefs: ColumnDef[] = useMemo(() => {
+    if (activePanel?.type === 'table') {
+      return tableColumns.map((c) => ({ id: c.name, name: c.name, type: c.dataType }));
+    }
+    if (activeQueryResult) {
+      return activeQueryResult.columns.map((c) => ({ id: c.name, name: c.name, type: c.dataType }));
+    }
+    return [];
+  }, [activePanel?.type, tableColumns, activeQueryResult]);
+
+  const detailRowIdx = activePanel?.type === 'table' ? detailRowIndex : resultDetailRowIndex;
+
+  const detailRow: Record<string, unknown> | null = useMemo(() => {
+    if (activePanel?.type === 'table') {
+      return detailRowIndex !== null && detailRowIndex < tableRows.length
+        ? tableRows[detailRowIndex]
+        : null;
+    }
+    if (activeQueryResult && resultDetailRowIndex !== null && resultDetailRowIndex < activeQueryResult.rows.length) {
+      return rowToRecord(activeQueryResult.rows[resultDetailRowIndex], activeQueryResult.columns);
+    }
+    return null;
+  }, [activePanel?.type, detailRowIndex, tableRows, activeQueryResult, resultDetailRowIndex]);
+
+  const handleDetailFieldEdit = useCallback(
+    (row: number, col: string, value: unknown) => {
+      if (activePanel?.type === 'table') {
+        updateCell(row, col, value);
+      } else if (activePanel?.type === 'query' && activeQueryTab) {
+        updateResultCell(activeQueryTab.id, activeQueryTab.activeResultIdx, row, col, value);
+      }
+    },
+    [activePanel, activeQueryTab, updateCell, updateResultCell],
+  );
+
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
       {/* Title bar */}
@@ -409,6 +469,11 @@ export function ConnectionWindow() {
             <span className="inline-flex h-2 w-2 rounded-full bg-green-500" />
             <span className="text-xs text-fg-secondary">{connectionName}</span>
           </div>
+        }
+        rightContent={
+          activePanel ? (
+            <DetailPanelToggle open={detailOpen} onToggle={() => setDetailOpen((p) => !p)} />
+          ) : undefined
         }
       />
 
@@ -626,6 +691,19 @@ export function ConnectionWindow() {
             )}
           </div>
         </ContextMenu>
+
+        {/* Detail sidebar — window level, visible for any panel */}
+        {activePanel && (
+          <DetailPanel
+            open={detailOpen}
+            onToggle={() => setDetailOpen((p) => !p)}
+            columns={detailColumnDefs}
+            row={detailRow}
+            rowIndex={detailRowIdx}
+            editable
+            onFieldEdit={handleDetailFieldEdit}
+          />
+        )}
       </div>
 
       {/* Status bar */}

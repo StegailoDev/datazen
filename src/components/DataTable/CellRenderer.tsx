@@ -27,11 +27,11 @@ export const CellRenderer = memo(function CellRenderer({
   }
 
   if (value === null || value === undefined) {
-    return <span className="italic text-fg-muted">NULL</span>;
+    return <span className="truncate italic text-fg-muted">NULL</span>;
   }
 
   if (type.includes('bool')) {
-    return <span className="font-mono text-sm text-purple-400">{String(value)}</span>;
+    return <span className="truncate font-mono text-sm text-purple-400">{String(value)}</span>;
   }
 
   if (
@@ -43,26 +43,27 @@ export const CellRenderer = memo(function CellRenderer({
     type.includes('real') ||
     type.includes('float')
   ) {
-    return <span className="font-mono text-sm text-amber-500 dark:text-amber-300">{String(value)}</span>;
+    return <span className="truncate text-right font-mono text-sm text-amber-500 dark:text-amber-300">{String(value)}</span>;
   }
 
   if (type.includes('timestamp') || type.includes('date')) {
     return (
-      <span className="font-mono text-xs text-violet-500 dark:text-violet-300" title={String(value)}>
+      <span className="truncate font-mono text-xs text-violet-500 dark:text-violet-300" title={String(value)}>
         {formatTimestamp(value)}
       </span>
     );
   }
 
   if (type.includes('json')) {
+    const jsonText = formatCell(value);
     return (
-      <span className="font-mono text-xs text-fg" title={formatCell(value)}>
-        {formatCell(value).length > 120 ? `${formatCell(value).slice(0, 120)}…` : formatCell(value)}
+      <span className="truncate font-mono text-xs text-fg" title={jsonText}>
+        {jsonText.length > 120 ? `${jsonText.slice(0, 120)}…` : jsonText}
       </span>
     );
   }
 
-  const text = String(value);
+  const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
   return (
     <span className={cn('truncate text-sm text-fg')} title={text}>
       {text.length > 120 ? `${text.slice(0, 120)}…` : text}

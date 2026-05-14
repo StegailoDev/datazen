@@ -1,8 +1,8 @@
-import { useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import type { FilterCondition, SortCondition } from '../../types';
 import type { CellEdit } from '../../stores/tableDataStore';
 import { useI18n } from '../../hooks/useI18n';
-import { useColumnResize } from '../../hooks/useColumnResize';
+import { useColumnResize, adjustWidthsForSort } from '../../hooks/useColumnResize';
 import { FilterBar } from '../FilterBar';
 import { Pagination } from './Pagination';
 import { TableHeader, type ColumnDef } from './TableHeader';
@@ -11,27 +11,45 @@ import { VirtualBody } from './VirtualBody';
 export interface DataTableProps {
   columns: ColumnDef[];
   rows: unknown[][];
-  totalRows: number;
-  page: number;
-  pageSize: number;
-  sorts: SortCondition[];
-  filters: FilterCondition[];
-  editBuffer: Map<string, CellEdit>;
-  editingCell: { row: number; col: string } | null;
-  selectedRows: Set<number>;
-  loading: boolean;
-  onSort: (sort: SortCondition) => void;
-  onFilter: (filter: FilterCondition) => void;
-  onRemoveFilter: (index: number) => void;
-  onClearFilters: () => void;
-  onPageChange: (page: number) => void;
-  onPageSizeChange: (size: number) => void;
-  onCellDoubleClick: (row: number, col: string) => void;
-  onCellEdit: (row: number, col: string, value: unknown) => void;
-  onCellEditCancel: () => void;
-  onRowSelect: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
-  onSelectAll: () => void;
+
+  totalRows?: number;
+  page?: number;
+  pageSize?: number;
+  onPageChange?: (page: number) => void;
+  onPageSizeChange?: (size: number) => void;
+
+  sorts?: SortCondition[];
+  onSort?: (sort: SortCondition) => void;
+
+  filters?: FilterCondition[];
+  onRemoveFilter?: (index: number) => void;
+  onClearFilters?: () => void;
+
+  editingCell?: { row: number; col: string } | null;
+  editBuffer?: Map<string, CellEdit>;
+  onCellDoubleClick?: (row: number, col: string) => void;
+  onCellEdit?: (row: number, col: string, value: unknown) => void;
+  onCellEditCancel?: () => void;
+
+  selectedRows?: Set<number>;
+  onRowSelect?: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
+  onSelectAll?: () => void;
+
+  /** Row clicked (single click) — used by parent to track detail panel row */
+  onRowClick?: (index: number) => void;
+
+  /** Highlighted row index (e.g. for detail panel) */
+  highlightedRow?: number | null;
+
+  loading?: boolean;
+  statusBar?: React.ReactNode;
+  rowHeight?: number;
 }
+
+const NOOP = () => {};
+const EMPTY_SET = new Set<number>();
+const EMPTY_SORTS: SortCondition[] = [];
+const EMPTY_FILTERS: FilterCondition[] = [];
 
 export function DataTable({
   columns,
@@ -39,14 +57,12 @@ export function DataTable({
   totalRows,
   page,
   pageSize,
-  sorts,
-  filters,
-  editBuffer: _editBuffer,
+  sorts = EMPTY_SORTS,
+  filters = EMPTY_FILTERS,
   editingCell,
-  selectedRows,
+  selectedRows = EMPTY_SET,
   loading,
   onSort,
-  onFilter: _onFilter,
   onRemoveFilter,
   onClearFilters,
   onPageChange,
@@ -56,61 +72,100 @@ export function DataTable({
   onCellEditCancel,
   onRowSelect,
   onSelectAll,
+  onRowClick,
+  highlightedRow,
+  statusBar,
+  rowHeight = 40,
 }: DataTableProps) {
-  void _onFilter;
-  void _editBuffer;
-
   const { t } = useI18n();
   const scrollRef = useRef<HTMLDivElement>(null);
-  const { columnWidths, onResizeStart } = useColumnResize({ count: columns.length });
+  const colMeta = useMemo(
+    () => columns.map((c) => ({ name: c.name, type: c.type })),
+    [columns],
+  );
+  const { columnWidths: baseWidths, onResizeStart } = useColumnResize({ count: columns.length, columns: colMeta, rows });
+  const columnWidths = useMemo(
+    () => adjustWidthsForSort(baseWidths, columns, sorts),
+    [baseWidths, columns, sorts],
+  );
+
+  const handleRowClick = useCallback(
+    (index: number, opts?: { multi?: boolean; range?: boolean }) => {
+      onRowClick?.(index);
+      onRowSelect?.(index, opts);
+    },
+    [onRowClick, onRowSelect],
+  );
+
+  const hasPagination = page != null && pageSize != null && totalRows != null && onPageChange && onPageSizeChange;
+  const hasSelection = onSelectAll != null && onRowSelect != null;
+  const hasFilters = filters.length > 0 && onRemoveFilter && onClearFilters;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-edge bg-surface">
-      <FilterBar filters={filters} onRemove={onRemoveFilter} onClear={onClearFilters} />
-      <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-surface px-2 py-1.5">
-        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-secondary hover:text-fg">
-          <input
-            type="checkbox"
-            className="accent-blue-500"
-            checked={rows.length > 0 && selectedRows.size === rows.length}
-            ref={(el) => {
-              if (el) el.indeterminate = selectedRows.size > 0 && selectedRows.size < rows.length;
-            }}
-            onChange={onSelectAll}
-          />
-          {t('dataTable.selectAll')}
-        </label>
-        {selectedRows.size > 0 && (
-          <span className="text-xs text-fg-muted">
-            {t('dataTable.selected')} {selectedRows.size} / {rows.length} {t('common.rows')}
-          </span>
-        )}
-        {loading ? <span className="text-xs text-fg-muted">{t('common.loading')}</span> : null}
-      </div>
-      {/* Single scroll container for both horizontal & vertical scrolling */}
+      {hasFilters && (
+        <FilterBar filters={filters} onRemove={onRemoveFilter} onClear={onClearFilters} />
+      )}
+
+      {hasSelection && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-surface px-2 py-1.5">
+          <label className="flex cursor-pointer items-center gap-1.5 text-xs text-fg-secondary hover:text-fg">
+            <input
+              type="checkbox"
+              className="accent-blue-500"
+              checked={rows.length > 0 && selectedRows.size === rows.length}
+              ref={(el) => {
+                if (el) el.indeterminate = selectedRows.size > 0 && selectedRows.size < rows.length;
+              }}
+              onChange={onSelectAll}
+            />
+            {t('dataTable.selectAll')}
+          </label>
+          {selectedRows.size > 0 && (
+            <span className="text-xs text-fg-muted">
+              {t('dataTable.selected')} {selectedRows.size} / {rows.length} {t('common.rows')}
+            </span>
+          )}
+          {loading ? <span className="text-xs text-fg-muted">{t('common.loading')}</span> : null}
+        </div>
+      )}
+
+      {statusBar}
+
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
-        <TableHeader columns={columns} sorts={sorts} onSort={onSort} columnWidths={columnWidths} onResizeStart={onResizeStart} />
+        <TableHeader
+          columns={columns}
+          sorts={sorts}
+          onSort={onSort ?? NOOP}
+          columnWidths={columnWidths}
+          onResizeStart={onResizeStart}
+          sortable={onSort != null}
+        />
         <VirtualBody
           columns={columns}
           rows={rows}
-          rowHeight={40}
-          editingCell={editingCell}
+          rowHeight={rowHeight}
+          editingCell={editingCell ?? null}
           selectedRows={selectedRows}
+          highlightedRow={highlightedRow}
           scrollRef={scrollRef}
           columnWidths={columnWidths}
-          onCellDoubleClick={onCellDoubleClick}
-          onCellEdit={onCellEdit}
-          onCellEditCancel={onCellEditCancel}
-          onRowSelect={onRowSelect}
+          onCellDoubleClick={onCellDoubleClick ?? NOOP}
+          onCellEdit={onCellEdit ?? NOOP}
+          onCellEditCancel={onCellEditCancel ?? NOOP}
+          onRowSelect={handleRowClick}
         />
       </div>
-      <Pagination
-        page={page}
-        pageSize={pageSize}
-        totalRows={totalRows}
-        onPageChange={onPageChange}
-        onPageSizeChange={onPageSizeChange}
-      />
+
+      {hasPagination && (
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          totalRows={totalRows}
+          onPageChange={onPageChange}
+          onPageSizeChange={onPageSizeChange}
+        />
+      )}
     </div>
   );
 }

@@ -301,6 +301,12 @@ const zhCN = {
   'dataTable.sort': '排序',
   'dataTable.selectRow': '选择行',
 
+  // ── Detail Panel ──
+  'detail.title': '详情',
+  'detail.show': '显示详情面板',
+  'detail.hide': '隐藏详情面板',
+  'detail.noSelection': '点击一行以查看字段详情',
+
   // ── Pagination ──
   'pagination.perPage': '每页',
   'pagination.prev': '上一页',

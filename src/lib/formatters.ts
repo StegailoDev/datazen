@@ -30,6 +30,19 @@ export function formatLastConnected(iso?: string): string {
   return d.toLocaleString();
 }
 
+export function formatResultCell(cell: unknown): string {
+  if (cell === null || cell === undefined) return 'NULL';
+  if (typeof cell === 'boolean') return cell ? 'true' : 'false';
+  if (typeof cell === 'object') {
+    try {
+      return JSON.stringify(cell);
+    } catch {
+      return String(cell);
+    }
+  }
+  return String(cell);
+}
+
 export function displayValueForTitle(value: Value | unknown): string {
   return formatCell(value);
 }

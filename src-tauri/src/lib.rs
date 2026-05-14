@@ -348,6 +348,7 @@ pub fn run() {
             commands::save_groups,
             commands::test_connection,
             commands::connect,
+            commands::ping_connection,
             commands::disconnect,
             commands::get_connection_info,
             commands::get_databases,

@@ -24,6 +24,9 @@ struct ActiveConnection {
 pub struct ConnectionManager {
     registry: Arc<DriverRegistry>,
     connections: Arc<RwLock<HashMap<String, ActiveConnection>>>,
+    /// Maps runtime connectionId → persistent configId so we can reconnect
+    /// after idle eviction using the latest config from the Store.
+    config_id_map: Arc<RwLock<HashMap<String, String>>>,
     store: Arc<Store>,
     idle_timeout: Duration,
 }
@@ -48,6 +51,7 @@ impl ConnectionManager {
         Self {
             registry,
             connections: Arc::new(RwLock::new(HashMap::new())),
+            config_id_map: Arc::new(RwLock::new(HashMap::new())),
             store,
             idle_timeout: Duration::from_secs(1800),
         }
@@ -60,7 +64,6 @@ impl ConnectionManager {
             .await
             .ok_or_else(|| ConnectionError::ConfigNotFound(config_id.to_string()))?;
 
-        // If SSH tunnel is configured, establish it and rewrite host/port
         let (effective_config, tunnel) = self.maybe_start_tunnel(config).await?;
 
         let driver = self
@@ -71,6 +74,9 @@ impl ConnectionManager {
 
         let handle = driver.connect(&effective_config).await?;
         let connection_id = handle.id.clone();
+
+        self.config_id_map.write().await
+            .insert(connection_id.clone(), config_id.to_string());
 
         let mut connections = self.connections.write().await;
         connections.insert(
@@ -88,6 +94,8 @@ impl ConnectionManager {
     }
 
     pub async fn disconnect(&self, connection_id: &str) -> Result<(), ConnectionError> {
+        self.config_id_map.write().await.remove(connection_id);
+
         let mut connections = self.connections.write().await;
 
         if let Some(active) = connections.remove(connection_id) {
@@ -103,21 +111,71 @@ impl ConnectionManager {
         &self,
         connection_id: &str,
     ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), ConnectionError> {
-        let mut connections = self.connections.write().await;
+        {
+            let mut connections = self.connections.write().await;
+            if let Some(active) = connections.get_mut(connection_id) {
+                active.last_used = Instant::now();
 
-        let active = connections
-            .get_mut(connection_id)
+                let driver = self
+                    .registry
+                    .get(&active.config.database_type)
+                    .await
+                    .ok_or_else(|| ConnectionError::DriverNotFound(active.config.database_type.clone()))?;
+
+                return Ok((driver, active.handle.clone()));
+            }
+        }
+
+        // Connection was evicted — reconnect using configId from persistent Store
+        self.reconnect(connection_id).await
+    }
+
+    /// Transparently re-establish an evicted connection.
+    /// Reads the latest config from the persistent Store via `config_id_map`.
+    async fn reconnect(
+        &self,
+        connection_id: &str,
+    ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionHandle), ConnectionError> {
+        let config_id = {
+            let map = self.config_id_map.read().await;
+            map.get(connection_id).cloned()
+        };
+
+        let config_id = config_id
             .ok_or_else(|| ConnectionError::ConnectionNotFound(connection_id.to_string()))?;
 
-        active.last_used = Instant::now();
+        let config = self
+            .store
+            .get_connection(&config_id)
+            .await
+            .ok_or_else(|| ConnectionError::ConfigNotFound(config_id.clone()))?;
+
+        tracing::info!(%connection_id, %config_id, name = %config.name, "Auto-reconnecting evicted connection");
+
+        let (effective_config, tunnel) = self.maybe_start_tunnel(config).await?;
 
         let driver = self
             .registry
-            .get(&active.config.database_type)
+            .get(&effective_config.database_type)
             .await
-            .ok_or_else(|| ConnectionError::DriverNotFound(active.config.database_type.clone()))?;
+            .ok_or(ConnectionError::DriverNotFound(effective_config.database_type.clone()))?;
 
-        Ok((driver, active.handle.clone()))
+        let handle = driver.connect(&effective_config).await?;
+
+        let mut connections = self.connections.write().await;
+        connections.insert(
+            connection_id.to_string(),
+            ActiveConnection {
+                handle: handle.clone(),
+                config: effective_config,
+                created_at: Instant::now(),
+                last_used: Instant::now(),
+                _tunnel: tunnel,
+            },
+        );
+
+        tracing::info!(%connection_id, "Auto-reconnect succeeded");
+        Ok((driver, handle))
     }
 
     pub async fn get_connection_config(
@@ -132,7 +190,6 @@ impl ConnectionManager {
     }
 
     pub async fn test_connection(&self, config: &ConnectionConfig) -> Result<ServerInfo, ConnectionError> {
-        // If SSH tunnel is configured, establish a temporary tunnel for testing
         let (effective_config, _tunnel) = self.maybe_start_tunnel(config.clone()).await?;
 
         let driver = self
@@ -145,7 +202,17 @@ impl ConnectionManager {
             .test_connection(&effective_config)
             .await
             .map_err(ConnectionError::DriverError)
-        // _tunnel is dropped here, closing the temporary SSH session
+    }
+
+    /// Lightweight touch: refreshes `last_used` so idle cleanup doesn't evict.
+    pub async fn ping(&self, connection_id: &str) -> bool {
+        let mut connections = self.connections.write().await;
+        if let Some(active) = connections.get_mut(connection_id) {
+            active.last_used = Instant::now();
+            true
+        } else {
+            false
+        }
     }
 
     pub async fn cleanup_idle_connections(&self) {
@@ -158,13 +225,16 @@ impl ConnectionManager {
             .map(|(id, _)| id.clone())
             .collect();
 
-        for id in to_remove {
-            if let Some(active) = connections.remove(&id) {
+        for id in &to_remove {
+            if let Some(active) = connections.remove(id) {
+                tracing::info!(connection_id = %id, name = %active.config.name,
+                    "Evicting idle connection (config_id mapping preserved for auto-reconnect)");
                 if let Some(driver) = self.registry.get(&active.config.database_type).await {
                     let _ = driver.disconnect(active.handle).await;
                 }
             }
         }
+        // Note: config_id_map is NOT cleared here — it stays so reconnect() works
     }
 
     pub fn start_cleanup_task(self: Arc<Self>) {
@@ -178,6 +248,8 @@ impl ConnectionManager {
     }
 
     pub async fn shutdown(&self) {
+        self.config_id_map.write().await.clear();
+
         let mut connections = self.connections.write().await;
 
         for (_, active) in connections.drain() {
@@ -187,8 +259,6 @@ impl ConnectionManager {
         }
     }
 
-    /// If SSH tunnel is enabled in the config, start the tunnel and return
-    /// a modified config pointing to `127.0.0.1:<local_port>`.
     async fn maybe_start_tunnel(
         &self,
         config: ConnectionConfig,
@@ -223,7 +293,6 @@ impl ConnectionManager {
         let mut tunneled = config;
         tunneled.host = Some("127.0.0.1".to_string());
         tunneled.port = Some(tunnel.local_port());
-        // Clear SSH config from the effective config so drivers don't see it
         tunneled.ssh_tunnel = None;
 
         Ok((tunneled, Some(tunnel)))

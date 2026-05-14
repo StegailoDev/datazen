@@ -12,6 +12,7 @@ export interface VirtualBodyProps {
   rowHeight: number;
   editingCell: { row: number; col: string } | null;
   selectedRows: Set<number>;
+  highlightedRow?: number | null;
   scrollRef: RefObject<HTMLDivElement | null>;
   columnWidths?: number[];
   onCellDoubleClick: (row: number, col: string) => void;
@@ -26,6 +27,7 @@ export function VirtualBody({
   rowHeight,
   editingCell,
   selectedRows,
+  highlightedRow,
   scrollRef,
   columnWidths,
   onCellDoubleClick,
@@ -49,6 +51,7 @@ export function VirtualBody({
         const row = rows[vRow.index] ?? [];
         const selected = selectedRows.has(vRow.index);
         const nextSelected = selectedRows.has(vRow.index + 1);
+        const highlighted = highlightedRow === vRow.index;
         return (
           <div
             key={vRow.key}
@@ -59,7 +62,9 @@ export function VirtualBody({
               vRow.index % 2 === 1 ? 'bg-surface-raised/50' : 'bg-surface',
               selected
                 ? 'bg-blue-500/15 dark:bg-blue-500/20'
-                : 'hover:bg-surface-raised/50',
+                : highlighted
+                  ? 'bg-accent/8 dark:bg-accent/12'
+                  : 'hover:bg-surface-raised/50',
             )}
             style={{ top: vRow.start, height: rowHeight }}
             onClick={(e) => {

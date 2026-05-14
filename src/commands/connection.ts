@@ -14,6 +14,9 @@ export const connectionCommands = {
 
   connect: (configId: string) => invoke<string>('connect', { configId }),
 
+  pingConnection: (connectionId: string) =>
+    invoke<boolean>('ping_connection', { connectionId }),
+
   disconnect: (connectionId: string) =>
     invoke<void>('disconnect', { connectionId }),
 

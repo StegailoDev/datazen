@@ -2,9 +2,8 @@ import { useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
-import { useTableDataStore } from '../../stores/tableDataStore';
+import { useTableDataStore, type TableState } from '../../stores/tableDataStore';
 import { useI18n } from '../../hooks/useI18n';
-import type { TableState } from '../../stores/tableDataStore';
 
 interface TableViewProps {
   connectionId: string;
@@ -18,7 +17,6 @@ export function TableView({ connectionId, tableName }: TableViewProps) {
   const loadTableData = useTableDataStore((s) => s.loadTableData);
   const switchToTable = useTableDataStore((s) => s.switchToTable);
   const setSort = useTableDataStore((s) => s.setSort);
-  const addFilter = useTableDataStore((s) => s.addFilter);
   const removeFilter = useTableDataStore((s) => s.removeFilter);
   const clearFilters = useTableDataStore((s) => s.clearFilters);
   const setPage = useTableDataStore((s) => s.setPage);
@@ -28,6 +26,8 @@ export function TableView({ connectionId, tableName }: TableViewProps) {
   const cancelEdit = useTableDataStore((s) => s.cancelEdit);
   const selectRow = useTableDataStore((s) => s.selectRow);
   const toggleSelectAll = useTableDataStore((s) => s.toggleSelectAll);
+  const setDetailRow = useTableDataStore((s) => s.setDetailRow);
+  const detailRowIndex = useTableDataStore((s) => s.detailRowIndex);
 
   const ts: TableState | undefined = tableStates.get(tableName);
   const hasData = ts != null && ts.columns.length > 0;
@@ -47,7 +47,6 @@ export function TableView({ connectionId, tableName }: TableViewProps) {
   const pageSize = ts?.pageSize ?? 50;
   const sorts = ts?.sorts ?? [];
   const filters = ts?.filters ?? [];
-  const editBuffer = ts?.editBuffer ?? new Map();
   const editingCell = ts?.editingCell ?? null;
   const selectedRows = ts?.selectedRows ?? new Set<number>();
   const loading = ts?.loading ?? false;
@@ -98,12 +97,10 @@ export function TableView({ connectionId, tableName }: TableViewProps) {
       pageSize={pageSize}
       sorts={sorts}
       filters={filters}
-      editBuffer={editBuffer}
       editingCell={editingCell}
       selectedRows={selectedRows}
       loading={loading}
       onSort={setSort}
-      onFilter={addFilter}
       onRemoveFilter={removeFilter}
       onClearFilters={clearFilters}
       onPageChange={setPage}
@@ -113,6 +110,8 @@ export function TableView({ connectionId, tableName }: TableViewProps) {
       onCellEditCancel={cancelEdit}
       onRowSelect={selectRow}
       onSelectAll={toggleSelectAll}
+      onRowClick={setDetailRow}
+      highlightedRow={detailRowIndex}
     />
   );
 }

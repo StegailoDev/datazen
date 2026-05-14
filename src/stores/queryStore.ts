@@ -40,6 +40,7 @@ interface QueryStore {
   activeTabId: string;
   historyVisible: boolean;
   history: QueryHistoryEntry[];
+  resultDetailRowIndex: number | null;
 
   setConnectionId: (id: string | null) => void;
   createTab: () => void;
@@ -52,7 +53,9 @@ interface QueryStore {
   cancelQuery: (tabId: string) => Promise<void>;
   loadHistory: () => Promise<void>;
   toggleHistory: () => void;
+  updateResultCell: (tabId: string, resultIdx: number, row: number, col: string, value: unknown) => void;
   reset: () => void;
+  setResultDetailRow: (index: number | null) => void;
 }
 
 let tabCounter = 0;
@@ -63,6 +66,7 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
   activeTabId: '',
   historyVisible: false,
   history: [],
+  resultDetailRowIndex: null,
 
   setConnectionId: (id) => set({ connectionId: id }),
 
@@ -204,6 +208,28 @@ export const useQueryStore = create<QueryStore>((set, get) => ({
   },
 
   toggleHistory: () => set((s) => ({ historyVisible: !s.historyVisible })),
+
+  setResultDetailRow: (index) => set({ resultDetailRowIndex: index }),
+
+  updateResultCell: (tabId, resultIdx, row, col, value) =>
+    set((s) => ({
+      tabs: s.tabs.map((tab) => {
+        if (tab.id !== tabId) return tab;
+        const results = tab.results.map((r, ri) => {
+          if (ri !== resultIdx) return r;
+          const colIdx = r.columns.findIndex((c) => c.name === col);
+          if (colIdx === -1) return r;
+          const rows = r.rows.map((rowArr, rowI) => {
+            if (rowI !== row) return rowArr;
+            const next = [...rowArr];
+            next[colIdx] = value as import('../types').Value;
+            return next;
+          });
+          return { ...r, rows };
+        });
+        return { ...tab, results };
+      }),
+    })),
 
   reset: () => {
     tabCounter = 0;

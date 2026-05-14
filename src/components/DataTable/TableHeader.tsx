@@ -1,7 +1,6 @@
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
+import { ArrowDown, ArrowUp } from 'lucide-react';
 import type { SortCondition } from '../../types';
 import { cn } from '../../lib/cn';
-import { useI18n } from '../../hooks/useI18n';
 
 export interface ColumnDef {
   id: string;
@@ -15,10 +14,10 @@ export interface TableHeaderProps {
   onSort: (sort: SortCondition) => void;
   columnWidths?: number[];
   onResizeStart?: (colIndex: number, startX: number) => void;
+  sortable?: boolean;
 }
 
-export function TableHeader({ columns, sorts, onSort, columnWidths, onResizeStart }: TableHeaderProps) {
-  const { t } = useI18n();
+export function TableHeader({ columns, sorts, onSort, columnWidths, onResizeStart, sortable = true }: TableHeaderProps) {
   const active = sorts[0];
 
   return (
@@ -34,10 +33,17 @@ export function TableHeader({ columns, sorts, onSort, columnWidths, onResizeStar
         return (
           <div
             key={col.id}
+            data-col-header={col.name}
             className="relative flex h-10 shrink-0 items-center justify-between gap-2 border-r border-edge px-3"
             style={{ width }}
+            onDoubleClick={() => {
+              if (!sortable) return;
+              if (sorted === 'none') onSort({ column: col.name, descending: false });
+              else if (sorted === 'asc') onSort({ column: col.name, descending: true });
+              else onSort({ column: col.name, descending: false });
+            }}
           >
-            <div className="min-w-0 truncate text-left">
+            <div data-col-label className="min-w-0 flex-1 truncate text-left">
               <div className="truncate text-xs font-medium text-fg-secondary" title={col.name}>
                 {col.name}
               </div>
@@ -47,27 +53,25 @@ export function TableHeader({ columns, sorts, onSort, columnWidths, onResizeStar
                 </div>
               ) : null}
             </div>
-            <button
-              type="button"
-              className={cn(
-                'inline-flex h-7 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-surface hover:text-fg',
-                sorted !== 'none' && 'text-blue-400',
-              )}
-              title={t('dataTable.sort')}
-              onClick={() => {
-                if (sorted === 'none') onSort({ column: col.name, descending: false });
-                else if (sorted === 'asc') onSort({ column: col.name, descending: true });
-                else onSort({ column: col.name, descending: false });
-              }}
-            >
-              {sorted === 'none' ? (
-                <ArrowUpDown className="h-4 w-4" />
-              ) : sorted === 'asc' ? (
-                <ArrowUp className="h-4 w-4" />
-              ) : (
-                <ArrowDown className="h-4 w-4" />
-              )}
-            </button>
+            {sortable && sorted !== 'none' && (
+              <button
+                type="button"
+                data-sort-icon
+                className={cn(
+                  'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-blue-400 hover:bg-surface hover:text-blue-300',
+                )}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSort({ column: col.name, descending: sorted === 'asc' });
+                }}
+              >
+                {sorted === 'asc' ? (
+                  <ArrowUp className="h-4 w-4" />
+                ) : (
+                  <ArrowDown className="h-4 w-4" />
+                )}
+              </button>
+            )}
             {onResizeStart && (
               <div
                 className="absolute right-0 top-0 z-20 h-full w-[5px] cursor-col-resize hover:bg-accent/40 active:bg-accent/60"

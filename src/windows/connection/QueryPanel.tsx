@@ -1,15 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Clock, Loader2, Play, Square } from 'lucide-react';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import { Button } from '../../components/ui/Button';
 import { SqlEditor } from '../../components/SqlEditor';
 import type { SqlSchema } from '../../components/SqlEditor';
+import { DataTable } from '../../components/DataTable/DataTable';
+import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { useQueryStore } from '../../stores/queryStore';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
-import { useColumnResize } from '../../hooks/useColumnResize';
 import { useI18n } from '../../hooks/useI18n';
-import { databaseCommands } from '../../commands/database';
 import { cn } from '../../lib/cn';
 import type { StatementResult } from '../../types';
 
@@ -33,49 +32,15 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
 
   const tables = useSchemaStore((s) => s.tables);
   const views = useSchemaStore((s) => s.views);
-
-  const [columnCache, setColumnCache] = useState<Record<string, string[]>>({});
-
-  const allTableNames = useMemo(
-    () => [...tables, ...views].map((t) => t.name),
-    [tables, views],
-  );
-
-  useEffect(() => {
-    if (!connectionId || allTableNames.length === 0) return;
-    let cancelled = false;
-
-    const missing = allTableNames.filter((name) => !(name in columnCache));
-    if (missing.length === 0) return;
-
-    Promise.all(
-      missing.map((name) =>
-        databaseCommands
-          .getColumns(connectionId, name)
-          .then((cols) => [name, cols] as const)
-          .catch(() => [name, [] as string[]] as const),
-      ),
-    ).then((entries) => {
-      if (cancelled) return;
-      setColumnCache((prev) => {
-        const next = { ...prev };
-        for (const [name, cols] of entries) {
-          next[name] = cols;
-        }
-        return next;
-      });
-    });
-
-    return () => { cancelled = true; };
-  }, [connectionId, allTableNames, columnCache]);
+  const columnMap = useSchemaStore((s) => s.columnMap);
 
   const editorSchema: SqlSchema = useMemo(() => {
     const result: SqlSchema = {};
-    for (const name of allTableNames) {
-      result[name] = columnCache[name] ?? [];
+    for (const t of [...tables, ...views]) {
+      result[t.name] = columnMap[t.name] ?? [];
     }
     return result;
-  }, [allTableNames, columnCache]);
+  }, [tables, views, columnMap]);
 
   useEffect(() => {
     setConnectionId(connectionId);
@@ -235,28 +200,25 @@ export function QueryPanel({ connectionId, queryTabId }: QueryPanelProps) {
   );
 }
 
-const ROW_HEIGHT = 32;
-
 function ResultTable({ result }: { result: StatementResult }) {
   const { t } = useI18n();
-  const { columns, rows } = result;
   const queryResultLimit = useSettingsStore((s) => s.settings.queryResultLimit);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const { columnWidths, onResizeStart } = useColumnResize({ count: columns.length });
+  const setResultDetailRow = useQueryStore((s) => s.setResultDetailRow);
+  const resultDetailRowIndex = useQueryStore((s) => s.resultDetailRowIndex);
 
-  const virtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 20,
-  });
+  const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
 
-  return (
-    <>
+  const columnDefs: ColumnDef[] = useMemo(
+    () => result.columns.map((c) => ({ id: c.name, name: c.name, type: c.dataType })),
+    [result.columns],
+  );
+
+  const statusBar = useMemo(
+    () => (
       <div className="flex items-center gap-3 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-secondary">
-        <span>{rows.length} {t('common.rows')}</span>
+        <span>{result.rows.length} {t('common.rows')}</span>
         <span className="text-edge">|</span>
-        <span>{columns.length} {t('common.columns')}</span>
+        <span>{result.columns.length} {t('common.columns')}</span>
         <span className="text-edge">|</span>
         <span>{result.executionTimeMs} ms</span>
         {result.sql && (
@@ -277,65 +239,30 @@ function ResultTable({ result }: { result: StatementResult }) {
           </>
         )}
       </div>
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
-        <div className="min-w-max text-[13px]">
-          {/* Sticky header */}
-          <div className="sticky top-0 z-10 flex bg-surface-alt">
-            <div className="w-[60px] shrink-0 border-b border-r border-edge px-3 py-2 text-left text-xs font-medium text-fg-muted">
-              #
-            </div>
-            {columns.map((col, ci) => (
-              <div
-                key={col.name}
-                className="relative shrink-0 border-b border-r border-edge px-3 py-2 text-left text-xs font-medium text-fg-secondary"
-                style={{ width: columnWidths[ci] }}
-              >
-                {col.name}
-                <div
-                  className="absolute right-0 top-0 z-20 h-full w-[5px] cursor-col-resize hover:bg-accent/40 active:bg-accent/60"
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    onResizeStart(ci, e.clientX);
-                  }}
-                />
-              </div>
-            ))}
-          </div>
-          {/* Virtualized rows */}
-          <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-            {virtualizer.getVirtualItems().map((vRow) => {
-              const row = rows[vRow.index];
-              return (
-                <div
-                  key={vRow.index}
-                  className={cn(
-                    'absolute left-0 flex w-full border-b border-edge',
-                    vRow.index % 2 === 0 ? 'bg-surface' : 'bg-surface-raised/50',
-                  )}
-                  style={{ top: vRow.start, height: ROW_HEIGHT }}
-                >
-                  <div className="flex w-[60px] shrink-0 items-center border-r border-edge px-3 text-xs text-fg-muted">
-                    {vRow.index + 1}
-                  </div>
-                  {row.map((cell, ci) => (
-                    <div
-                      key={columns[ci]?.name ?? ci}
-                      className="flex shrink-0 items-center overflow-hidden border-r border-edge px-3 font-mono"
-                      style={{ width: columnWidths[ci] }}
-                    >
-                      {cell === null || cell === undefined ? (
-                        <span className="text-fg-muted italic">NULL</span>
-                      ) : (
-                        <span className="truncate text-fg-secondary">{String(cell)}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </>
+    ),
+    [result, queryResultLimit, t],
+  );
+
+  const handleCellDoubleClick = useCallback(
+    (row: number, col: string) => {
+      setResultDetailRow(row);
+      setEditingCell({ row, col });
+    },
+    [setResultDetailRow],
+  );
+
+  return (
+    <DataTable
+      columns={columnDefs}
+      rows={result.rows}
+      statusBar={statusBar}
+      rowHeight={32}
+      editingCell={editingCell}
+      onCellDoubleClick={handleCellDoubleClick}
+      onCellEdit={(_row, _col, _value) => setEditingCell(null)}
+      onCellEditCancel={() => setEditingCell(null)}
+      onRowClick={setResultDetailRow}
+      highlightedRow={resultDetailRowIndex}
+    />
   );
 }

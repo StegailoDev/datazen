@@ -101,7 +101,7 @@ interface TableDataStore {
 
   setDatabaseType: (dbType: string) => void;
   switchToTable: (table: string) => void;
-  loadTableData: (params: { connectionId: string; table: string }) => Promise<void>;
+  loadTableData: (params: { connectionId: string; table: string; skipCount?: boolean }) => Promise<void>;
   setPage: (page: number) => void;
   setPageSize: (size: number) => void;
   addFilter: (filter: FilterCondition) => void;
@@ -117,6 +117,9 @@ interface TableDataStore {
   toggleSelectAll: () => void;
   deleteSelectedRows: () => Promise<void>;
   closeTable: (table: string) => void;
+
+  detailRowIndex: number | null;
+  setDetailRow: (index: number | null) => void;
   reset: () => void;
 }
 
@@ -166,6 +169,9 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   tableStates: new Map(),
   ...syncFlat(null, new Map()),
 
+  detailRowIndex: null,
+  setDetailRow: (index) => set({ detailRowIndex: index }),
+
   setDatabaseType: (dbType: string) => set({ databaseType: dbType }),
 
   switchToTable: (table: string) => {
@@ -173,7 +179,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
     set({ activeTable: table, ...syncFlat(table, tableStates) });
   },
 
-  loadTableData: async ({ connectionId, table }) => {
+  loadTableData: async ({ connectionId, table, skipCount }) => {
     const { tableStates } = get();
     const existing = tableStates.get(table) ?? emptyTableState();
     const { page, pageSize, filters, sorts } = existing;
@@ -195,6 +201,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         pageSize,
         filters,
         sorts,
+        skipCount,
       });
       const updated = new Map(get().tableStates);
       const ts = updated.get(table) ?? emptyTableState();
@@ -202,7 +209,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
         ...ts,
         columns: res.columns,
         rows: rowsToRecords(res.columns, res.rows),
-        totalRows: res.totalRows ?? 0,
+        totalRows: res.totalRows ?? ts.totalRows,
         page: res.page,
         pageSize: res.pageSize,
         loading: false,
@@ -234,13 +241,13 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   setPage: (page) => {
     updateActive(get, set, () => ({ page }));
     const { connectionId, activeTable } = get();
-    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
+    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable, skipCount: true });
   },
 
   setPageSize: (size) => {
     updateActive(get, set, () => ({ pageSize: size, page: 0 }));
     const { connectionId, activeTable } = get();
-    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
+    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable, skipCount: true });
   },
 
   addFilter: (filter) => updateActive(get, set, (ts) => ({
@@ -258,7 +265,7 @@ export const useTableDataStore = create<TableDataStore>((set, get) => ({
   setSort: (sort) => {
     updateActive(get, set, () => ({ sorts: [sort], page: 0 }));
     const { connectionId, activeTable } = get();
-    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable });
+    if (connectionId && activeTable) void get().loadTableData({ connectionId, table: activeTable, skipCount: true });
   },
 
   startEdit: (row, col) => updateActive(get, set, () => ({ editingCell: { row, col } })),
